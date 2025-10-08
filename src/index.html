@@ -213,6 +213,33 @@
           </div>
         </div>
       </div>
+      <!-- Update available modal -->
+      <div id="updateModal" class="modal-overlay">
+        <div class="about-modal">
+          <button id="updateClose" class="file-action-btn" style="float: right">✕</button>
+          <h3>New release available</h3>
+          <div id="updateBody" style="margin-top:8px">
+            <p>
+              Latest version: <strong id="updateLatest">?</strong>
+            </p>
+            <p>
+              Current version: <strong id="updateLocal">?</strong>
+            </p>
+            <div id="updateNotes" style="white-space:pre-wrap; max-height:220px; overflow:auto; margin-top:8px; color:var(--muted);">Visit the GitHub releases page for the release notes.</div>
+            <!-- reuse the same progress-bar used for file compression so styles match -->
+            <div style="display:flex; justify-content:center; align-items:center; gap:10px; margin-top:10px;">
+              <div id="updateProgressWrap" class="progress-bar" style="width:320px; display:none;">
+                <i id="updateProgressBar" style="width:0%"></i>
+              </div>
+              <div id="updateProgressPct" class="small" style="min-width:44px; text-align:right; color:var(--muted); display:none">0%</div>
+            </div>
+            <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px">
+              <button id="updateDownloadBtn" class="btn success">Download</button>
+              <button id="updateViewBtn" class="btn primary">View release</button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <script src="./renderer.js"></script>

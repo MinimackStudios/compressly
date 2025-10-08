@@ -8,28 +8,314 @@ const prioritySelectEl = document.getElementById("prioritySelect");
 const targetResolutionEl = document.getElementById("targetResolution");
 const footerInfoEl = document.getElementById("footer-info");
 const clearBtn = document.getElementById("clearList");
-const aboutBtn = document.getElementById("aboutBtn");
-const aboutModal = document.getElementById("aboutModal");
-const aboutClose = document.getElementById("aboutClose");
-const aboutVersion = document.getElementById("aboutVersion");
-const aboutDeps = document.getElementById("aboutDeps");
-const aboutAuthor = document.getElementById("aboutAuthor");
-const aboutRuntime = document.getElementById("aboutRuntime");
-const ffmpegModal = document.getElementById("ffmpegModal");
-const ffmpegOk = document.getElementById("ffmpegOk");
-const ffmpegDontShow = document.getElementById("ffmpegDontShow");
 
+// Settings persistence keys
+const SETTINGS_KEYS = {
+  targetSize: "compressly_targetSize",
+  videoFps: "compressly_videoFps",
+  targetResolution: "compressly_targetResolution",
+  priority: "compressly_priority",
+};
+
+// Load persisted settings (if present) and apply to inputs
+try {
+  const savedTarget = localStorage.getItem(SETTINGS_KEYS.targetSize);
+  if (savedTarget !== null && targetSizeEl) targetSizeEl.value = savedTarget;
+  const savedFps = localStorage.getItem(SETTINGS_KEYS.videoFps);
+  if (savedFps !== null && videoFpsEl) videoFpsEl.value = savedFps;
+  const savedRes = localStorage.getItem(SETTINGS_KEYS.targetResolution);
+  if (savedRes !== null && targetResolutionEl)
+    targetResolutionEl.value = savedRes;
+  const savedPriority = localStorage.getItem(SETTINGS_KEYS.priority);
+  if (savedPriority !== null && prioritySelectEl)
+    prioritySelectEl.value = savedPriority;
+} catch (e) {
+  console.warn("Could not load settings from localStorage", e);
+}
+
+// Save handlers to persist on change
+try {
+  if (targetSizeEl)
+    targetSizeEl.addEventListener("change", (ev) => {
+      try {
+        const v = String(ev.target.value);
+        localStorage.setItem(SETTINGS_KEYS.targetSize, v);
+      } catch (e) {}
+    });
+  if (videoFpsEl)
+    videoFpsEl.addEventListener("change", (ev) => {
+      try {
+        const v = String(ev.target.value);
+        localStorage.setItem(SETTINGS_KEYS.videoFps, v);
+      } catch (e) {}
+    });
+  if (targetResolutionEl)
+    targetResolutionEl.addEventListener("change", (ev) => {
+      try {
+        const v = String(ev.target.value);
+        localStorage.setItem(SETTINGS_KEYS.targetResolution, v);
+      } catch (e) {}
+    });
+  if (prioritySelectEl)
+    prioritySelectEl.addEventListener("change", (ev) => {
+      try {
+        const v = String(ev.target.value);
+        localStorage.setItem(SETTINGS_KEYS.priority, v);
+      } catch (e) {}
+    });
+} catch (e) {
+  console.warn("Could not attach settings persistence handlers", e);
+}
+
+// Global file lists/state (were accidentally removed) used by file pick, drag/drop, and processing
 let files = [];
 let fileStates = {}; // track per-file progress and status
 let anyCancelled = false;
 
-// persistent thumbnail cache directory (in user's home folder)
-const os = require("os");
-const fs = require("fs");
-const path = require("path");
-const cacheRoot = path.join(os.homedir(), ".compressly", "cache");
+// --- Update check with caching; auto-download to Downloads when user clicks Download ---
 try {
-  if (!fs.existsSync(cacheRoot)) fs.mkdirSync(cacheRoot, { recursive: true });
+  (async () => {
+    try {
+      const pj = require("../package.json");
+      const localVer = pj.version || "0.0.0";
+
+      const CACHE_KEY = "compressly_update_lastChecked";
+      const now = Date.now();
+      const lastChecked =
+        parseInt(localStorage.getItem(CACHE_KEY) || "0", 10) || 0;
+      const twelveHours = 12 * 60 * 60 * 1000;
+
+      let latestTag =
+        localStorage.getItem("compressly_update_latestTag") || null;
+      let latestUrl =
+        localStorage.getItem("compressly_update_latestUrl") || null;
+
+      if (!lastChecked || now - lastChecked > twelveHours || !latestTag) {
+        try {
+          const res = await fetch(
+            "https://api.github.com/repos/MinimackStudios/compressly/releases/latest",
+            { headers: { Accept: "application/vnd.github.v3+json" } }
+          );
+          if (res.ok) {
+            const data = await res.json();
+            latestTag = (data.tag_name || data.name || "").replace(/^v/i, "");
+            latestUrl =
+              data.html_url ||
+              "https://github.com/MinimackStudios/compressly/releases";
+            localStorage.setItem(CACHE_KEY, String(now));
+            if (latestTag)
+              localStorage.setItem("compressly_update_latestTag", latestTag);
+            if (latestUrl)
+              localStorage.setItem("compressly_update_latestUrl", latestUrl);
+          }
+        } catch (e) {
+          // network failure — fall back to cached tag when available
+        }
+      }
+
+      if (!latestTag) return; // nothing to compare
+
+      function compareSemver(a, b) {
+        const pa = a.split(/[.-]/).map((s) => parseInt(s, 10) || 0);
+        const pb = b.split(/[.-]/).map((s) => parseInt(s, 10) || 0);
+        for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+          const na = pa[i] || 0;
+          const nb = pb[i] || 0;
+          if (na > nb) return 1;
+          if (na < nb) return -1;
+        }
+        return 0;
+      }
+
+      if (compareSemver(latestTag, localVer) > 0) {
+        if (updateLatest) updateLatest.textContent = latestTag;
+        if (updateLocal) updateLocal.textContent = localVer;
+        if (updateNotes)
+          updateNotes.textContent =
+            "Visit the GitHub releases page for the release notes.";
+        if (updateModal) updateModal.classList.add("visible");
+
+        const url =
+          latestUrl || "https://github.com/MinimackStudios/compressly/releases";
+        const openExternal = () => {
+          try {
+            const { shell } = require("electron");
+            shell.openExternal(url);
+          } catch (e) {
+            window.open(url, "_blank");
+          }
+        };
+
+        if (updateViewBtn)
+          updateViewBtn.addEventListener("click", openExternal);
+        if (updateClose)
+          updateClose.addEventListener("click", () =>
+            updateModal.classList.remove("visible")
+          );
+        if (updateCloseBtn)
+          updateCloseBtn.addEventListener("click", () =>
+            updateModal.classList.remove("visible")
+          );
+
+        // Download: auto-save to Downloads and reveal
+        const downloadBtn = document.getElementById("updateDownloadBtn");
+        if (downloadBtn) {
+          downloadBtn.addEventListener("click", async () => {
+            downloadBtn.disabled = true;
+            downloadBtn.classList.add("loading");
+            const progressWrap = document.getElementById("updateProgressWrap");
+            const progEl = document.getElementById("updateProgressBar");
+            try {
+              const r = await fetch(
+                "https://api.github.com/repos/MinimackStudios/compressly/releases/latest",
+                { headers: { Accept: "application/vnd.github.v3+json" } }
+              );
+              if (!r.ok) throw new Error("Could not fetch release info");
+              const d = await r.json();
+              const assets = d.assets || [];
+              if (!assets.length) {
+                downloadBtn.classList.remove("loading");
+                downloadBtn.disabled = false;
+                openExternal();
+                return;
+              }
+              const asset = assets[0];
+              const assetUrl = asset.browser_download_url;
+              const defaultName = asset.name || `compressly-${latestTag}.zip`;
+              if (!assetUrl) {
+                downloadBtn.classList.remove("loading");
+                downloadBtn.disabled = false;
+                openExternal();
+                return;
+              }
+
+              // show progress bar and percentage
+              const pctEl = document.getElementById("updateProgressPct");
+              if (progressWrap) progressWrap.style.display = "block";
+              if (pctEl) pctEl.style.display = "block";
+              if (progEl) progEl.style.width = "0%";
+              if (pctEl) pctEl.textContent = "0%";
+
+              // stream the response so we can update progress
+              const resp = await fetch(assetUrl);
+              if (!resp.ok) throw new Error("Failed to download asset");
+
+              const contentLength = resp.headers.get("content-length");
+              const totalBytes = contentLength
+                ? parseInt(contentLength, 10)
+                : 0;
+              const reader =
+                resp.body && resp.body.getReader ? resp.body.getReader() : null;
+              const chunks = [];
+              let received = 0;
+
+              if (reader) {
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+                  chunks.push(value);
+                  received += value.length || value.byteLength || 0;
+                  if (progEl && totalBytes) {
+                    const pct = Math.round((received / totalBytes) * 100);
+                    progEl.style.width = pct + "%";
+                    if (pctEl) pctEl.textContent = pct + "%";
+                  }
+                }
+              } else {
+                // fallback: read as arrayBuffer if streaming isn't available
+                const arrayBuffer = await resp.arrayBuffer();
+                chunks.push(new Uint8Array(arrayBuffer));
+                received = arrayBuffer.byteLength || 0;
+                if (progEl && totalBytes) {
+                  const pct = Math.round((received / totalBytes) * 100);
+                  progEl.style.width = pct + "%";
+                  if (pctEl) pctEl.textContent = pct + "%";
+                }
+              }
+
+              // concatenate chunks
+              let length = 0;
+              for (const c of chunks) length += c.length || c.byteLength || 0;
+              const merged = new Uint8Array(length);
+              let offset = 0;
+              for (const c of chunks) {
+                merged.set(
+                  c instanceof Uint8Array ? c : new Uint8Array(c),
+                  offset
+                );
+                offset += c.length || c.byteLength || 0;
+              }
+
+              const os = require("os");
+              const path = require("path");
+              const downloadsDir = path.join(os.homedir(), "Downloads");
+              const savePath = path.join(downloadsDir, defaultName);
+
+              if (window.electronAPI && window.electronAPI.writeFile) {
+                await window.electronAPI.writeFile(
+                  savePath,
+                  Buffer.from(merged)
+                );
+                try {
+                  const { shell } = require("electron");
+                  if (shell && shell.showItemInFolder)
+                    shell.showItemInFolder(savePath);
+                  else shell.openPath(downloadsDir);
+                } catch (e) {
+                  try {
+                    window.open(downloadsDir, "_blank");
+                  } catch (e) {}
+                }
+                // run installer and exit the app
+                try {
+                  const electron = require("electron");
+                  if (electron && electron.ipcRenderer) {
+                    electron.ipcRenderer.send(
+                      "run-installer-and-exit",
+                      savePath,
+                      []
+                    );
+                  } else if (
+                    window &&
+                    window.electronAPI &&
+                    window.electronAPI.ipc
+                  ) {
+                    // no-op: preload currently doesn't expose ipc send; main listens for 'run-installer-and-exit'
+                  }
+                } catch (e) {}
+              } else {
+                openExternal();
+              }
+
+              // finish progress
+              if (progEl) progEl.style.width = "100%";
+              if (pctEl) pctEl.textContent = "100%";
+              setTimeout(() => {
+                if (progressWrap) progressWrap.style.display = "none";
+                if (pctEl) pctEl.style.display = "none";
+                downloadBtn.classList.remove("loading");
+                downloadBtn.disabled = false;
+              }, 600);
+            } catch (e) {
+              console.warn("download failed", e);
+              if (progressWrap) progressWrap.style.display = "none";
+              downloadBtn.classList.remove("loading");
+              downloadBtn.disabled = false;
+              openExternal();
+            }
+          });
+        }
+
+        if (updateModal)
+          updateModal.addEventListener("click", (ev) => {
+            if (ev.target === updateModal)
+              updateModal.classList.remove("visible");
+          });
+      }
+    } catch (e) {
+      console.warn("update check failed", e);
+    }
+  })();
 } catch (e) {}
 
 // Prune cache files older than 7 days (run async, don't block UI)
@@ -331,6 +617,7 @@ if (dropArea) {
       if (ev.key === "Escape") {
         aboutModal.classList.remove("visible");
         if (ffmpegModal) ffmpegModal.classList.remove("visible");
+        if (updateModal) updateModal.classList.remove("visible");
       }
     });
   }
@@ -487,6 +774,9 @@ function renderList() {
     status.textContent = fileStates[p].status || "Ready";
     const progressWrap = document.createElement("div");
     progressWrap.className = "progress-bar";
+    // allow the progress bar to sit inline so pct label can appear to its right
+    progressWrap.style.display = "inline-block";
+    progressWrap.style.verticalAlign = "middle";
     const prog = document.createElement("i");
     // ensure displayedProgress exists
     if (typeof fileStates[p].displayedProgress !== "number")
@@ -495,6 +785,22 @@ function renderList() {
     // save element reference for animation loop
     fileStates[p].progEl = prog;
     progressWrap.appendChild(prog);
+
+    // per-file percentage label (hidden until processing/progress)
+    const pctEl = document.createElement("div");
+    pctEl.className = "small";
+    pctEl.style.minWidth = "44px";
+    pctEl.style.textAlign = "right";
+    pctEl.style.color = "var(--muted)";
+    pctEl.style.display = "inline-block";
+    pctEl.style.marginRight = "8px";
+    pctEl.textContent = Math.round(fileStates[p].displayedProgress || 0) + "%";
+    pctEl.style.display =
+      fileStates[p].status === "processing" || (fileStates[p].progress || 0) > 0
+        ? "block"
+        : "none";
+    // save reference for the animation loop
+    fileStates[p].pctEl = pctEl;
 
     // remove button (trash icon)
     const removeBtn = document.createElement("button");
@@ -506,7 +812,10 @@ function renderList() {
     removeBtn.title = removeBtn.disabled
       ? "Cannot remove while processing"
       : "Remove";
-    removeBtn.innerText = "🗑";
+    // inline the provided trash SVG but ensure it uses currentColor for fill
+    removeBtn.innerHTML = `<svg aria-hidden="true" focusable="false" width="1em" height="1em" viewBox="0 0 800 800" style="vertical-align:middle; fill:currentColor;">
+      <path d="m600 200l-26.7 400.4c-2.3 35.1-3.5 52.6-11.1 65.9-6.6 11.7-16.7 21.2-28.8 27-13.8 6.7-31.4 6.7-66.5 6.7h-133.8c-35.1 0-52.7 0-66.5-6.7-12.1-5.8-22.2-15.3-28.8-27-7.6-13.3-8.8-30.8-11.1-65.9l-26.7-400.4m-66.7 0h533.4m-133.4 0l-9-27.1c-8.7-26.2-13.1-39.3-21.2-49-7.2-8.6-16.4-15.2-26.7-19.3-11.8-4.6-25.6-4.6-53.3-4.6h-46.2c-27.7 0-41.5 0-53.2 4.6-10.4 4.1-19.6 10.7-26.8 19.3-8.1 9.7-12.5 22.8-21.2 49l-9 27.1m200 133.3v233.4m-133.4-233.4v233.4"/>
+    </svg>`;
     removeBtn.addEventListener("click", () => {
       // do nothing if removal is disabled (file processing)
       if (removeBtn.disabled) return;
@@ -562,7 +871,20 @@ function renderList() {
     btnGroup.appendChild(removeBtn);
 
     actions.appendChild(status);
-    actions.appendChild(progressWrap);
+    // put progress bar and percentage in a horizontal row so pct appears to the right
+    const progressRow = document.createElement("div");
+    progressRow.style.display = "flex";
+    progressRow.style.alignItems = "center";
+    progressRow.style.gap = "8px";
+    progressRow.style.flexWrap = "nowrap";
+    // place percentage to the left of the progress bar
+    pctEl.style.whiteSpace = "nowrap";
+    // ensure the progress bar doesn't expand to full width and push the pct to next line
+    progressWrap.style.flex = "0 0 220px";
+    progressWrap.style.width = "220px";
+    progressRow.appendChild(pctEl);
+    progressRow.appendChild(progressWrap);
+    actions.appendChild(progressRow);
     actions.appendChild(btnGroup);
 
     li.appendChild(meta);
@@ -1037,12 +1359,27 @@ async function generateVideoThumbnail(videoPath, opts = {}) {
         if (s.progEl)
           s.progEl.style.width =
             Math.max(0, Math.min(100, s.displayedProgress)) + "%";
+        if (s.pctEl)
+          s.pctEl.textContent =
+            Math.round(Math.max(0, Math.min(100, s.displayedProgress))) + "%";
         needsRender = true;
       } else if (s.progEl && displayed !== target) {
         s.displayedProgress = target;
         s.progEl.style.width = Math.max(0, Math.min(100, target)) + "%";
+        if (s.pctEl)
+          s.pctEl.textContent =
+            Math.round(Math.max(0, Math.min(100, target))) + "%";
         needsRender = true;
       }
+      // show/hide pct element based on whether there's active progress or status
+      try {
+        if (s.pctEl) {
+          const shouldShow =
+            s.status === "processing" ||
+            (typeof s.progress === "number" && s.progress > 0);
+          s.pctEl.style.display = shouldShow ? "block" : "none";
+        }
+      } catch (e) {}
     }
     requestAnimationFrame(tick);
   }

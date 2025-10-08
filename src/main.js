@@ -96,3 +96,51 @@ ipcMain.handle("save-dialog", async (event, defaultPath) => {
 });
 
 ipcMain.on("log", (e, ...args) => console.log(...args));
+
+// Minimize the window, then close after a short delay (delay in ms passed from renderer)
+ipcMain.on("minimize-and-close", (event, delayMs = 3000) => {
+  try {
+    const win =
+      BrowserWindow.fromWebContents(event.sender) ||
+      BrowserWindow.getFocusedWindow();
+    if (win) {
+      try {
+        win.minimize();
+      } catch (e) {}
+      setTimeout(
+        () => {
+          try {
+            win.close();
+          } catch (e) {}
+        },
+        typeof delayMs === "number" ? delayMs : 3000
+      );
+    }
+  } catch (e) {
+    console.warn("minimize-and-close failed", e);
+  }
+});
+
+// Run an installer executable (path provided by renderer) detached and then quit the app
+ipcMain.on("run-installer-and-exit", (event, installerPath, args = []) => {
+  try {
+    const { spawn } = require("child_process");
+    // Normalize args to array
+    const argv = Array.isArray(args) ? args : [];
+    // Spawn detached so the installer runs after we quit
+    const child = spawn(installerPath, argv, {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: false,
+    });
+    try {
+      child.unref();
+    } catch (e) {}
+  } catch (e) {
+    console.warn("failed to launch installer", e);
+  }
+  try {
+    // Quit the app immediately
+    app.quit();
+  } catch (e) {}
+});

@@ -288,6 +288,56 @@ body.dark .priority-select {
   color: var(--text);
   box-shadow: 0 8px 20px rgba(2, 6, 23, 0.08);
 }
+/* Make small action buttons more visible in dark mode (close icons) */
+body.dark .file-action-btn {
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted);
+}
+body.dark .file-action-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+}
+
+/* Ensure modal close buttons (top-right) are more visible in dark modal specifically */
+.modal-overlay .about-modal .file-action-btn {
+  opacity: 0.95;
+}
+body.dark .modal-overlay .about-modal .file-action-btn {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+}
+
+/* Ensure remove (trash) button remains red in dark mode */
+body.dark .file-action-btn.remove {
+  color: #ff6b6b;
+}
+
+/* Download button spinner */
+.btn.loading {
+  position: relative;
+  pointer-events: none;
+  /* add left padding so the button grows to fit the spinner */
+  padding-left: 34px;
+  transition: padding-left 120ms ease;
+}
+.btn.loading::before {
+  content: "";
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-top-color: rgba(255, 255, 255, 0.9);
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: translateY(-50%) rotate(360deg);
+  }
+}
 .options {
   display: flex;
   gap: 12px;
