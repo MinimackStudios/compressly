@@ -1,0 +1,528 @@
+:root {
+  --bg: #f6f8fa;
+  --card: #ffffff;
+  --muted: #6b7280;
+  --accent: #7c3aed;
+  --text: #0f172a;
+}
+
+/* Dark theme variables — applied when <body class="dark"> */
+body.dark {
+  --bg: #0b1020;
+  --card: #0f1724;
+  --muted: #9aa4b2;
+  --accent: #7c3aed;
+  --text: #e6eef8;
+}
+/* decorative background blobs for the app (dark theme only) */
+.bg-blobs {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+.bg-blobs .blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(48px);
+  opacity: 0.06;
+  mix-blend-mode: screen;
+  will-change: transform, opacity;
+  transform: translate3d(0, 0, 0);
+}
+.bg-blobs .b1 {
+  width: 420px;
+  height: 420px;
+  left: -100px;
+  top: -80px;
+  background: radial-gradient(circle at 30% 30%, #7c3aed, #4f46e5);
+  animation: blobDrift 24s ease-in-out infinite;
+}
+.bg-blobs .b2 {
+  width: 360px;
+  height: 360px;
+  right: -80px;
+  top: 38%;
+  background: radial-gradient(circle at 50% 40%, #06b6a4, #10b981);
+  animation: blobDrift 30s ease-in-out infinite;
+  animation-delay: 6s;
+}
+.bg-blobs .b3 {
+  width: 260px;
+  height: 260px;
+  left: 8%;
+  bottom: -80px;
+  background: radial-gradient(circle at 60% 60%, #f97316, #f59e0b);
+  animation: blobDrift 26s ease-in-out infinite;
+  animation-delay: 10s;
+}
+@keyframes blobDrift {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.06;
+  }
+  25% {
+    transform: translate3d(28px, -18px, 0) scale(1.02);
+    opacity: 0.085;
+  }
+  50% {
+    transform: translate3d(-22px, 20px, 0) scale(0.98);
+    opacity: 0.055;
+  }
+  75% {
+    transform: translate3d(16px, 12px, 0) scale(1.01);
+    opacity: 0.08;
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.06;
+  }
+}
+* {
+  box-sizing: border-box;
+  font-family: Inter, Segoe UI, Roboto, "Helvetica Neue", Arial;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+.topbar {
+  padding: 18px 24px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.02) 0%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+.brand {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--accent);
+  /* gradient text */
+  background: linear-gradient(90deg, #4f46e5, #7c3aed);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.subtitle {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+.container {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.drop-hint {
+  padding: 12px 14px;
+  border-radius: 10px;
+  text-align: center;
+  /* make the drop hint more transparent so decorative blobs show through */
+  background: linear-gradient(
+    90deg,
+    rgba(124, 58, 237, 0.04),
+    rgba(16, 185, 129, 0.02)
+  );
+  color: var(--muted);
+  /* subtle backdrop blur for a glassy effect */
+  backdrop-filter: blur(6px);
+}
+.list {
+  position: relative;
+}
+.dragover {
+  box-shadow: 0 8px 30px rgba(124, 58, 237, 0.08);
+  border: 1px dashed rgba(124, 58, 237, 0.18);
+}
+.controls {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+}
+.controls .options {
+  display: flex;
+  align-items: center;
+  transform: translateY(-7px);
+}
+.btn {
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 0;
+  cursor: pointer;
+  font-weight: 600;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+  box-shadow: 0 6px 18px rgba(16, 24, 40, 0.04);
+}
+.btn.primary {
+  background: linear-gradient(90deg, #4f46e5, #7c3aed);
+  color: white;
+}
+.btn.success {
+  background: linear-gradient(90deg, #10b981, #059669);
+  color: white;
+}
+.btn:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 30px rgba(16, 24, 40, 0.12);
+}
+
+.target-input {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  width: 90px;
+}
+
+.fps-input {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  width: 90px;
+}
+
+.target-input,
+.fps-input {
+  background: var(--card);
+  color: var(--text);
+  box-shadow: 0 6px 18px rgba(16, 24, 40, 0.04);
+}
+
+.priority-select {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  background: var(--card);
+  color: var(--text);
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  /* use an explicit dark arrow for light theme (encoded #0f172a) */
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='%230f172a' d='M7 10l5 5 5-5z'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px;
+  padding-right: 34px;
+  box-shadow: 0 6px 18px rgba(16, 24, 40, 0.04);
+}
+
+/* In dark mode replace the arrow with a light SVG so it appears white */
+body.dark .priority-select {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='%23e6eef8' d='M7 10l5 5 5-5z'/></svg>");
+}
+
+.priority-select:focus {
+  outline: none;
+  box-shadow: 0 8px 24px rgba(124, 58, 237, 0.08);
+  border-color: rgba(124, 58, 237, 0.28);
+}
+
+.priority-select option {
+  background: var(--card);
+  color: var(--text);
+}
+
+.target-label,
+.fps-label,
+.priority-label {
+  display: inline-block;
+  transform: translateY(-6px);
+  margin-bottom: 2px;
+}
+
+.resolution-label {
+  display: inline-block;
+  transform: translateY(-6px);
+  margin-bottom: 2px;
+}
+
+.file-action-btn {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 8px;
+}
+.file-action-btn[disabled],
+.file-action-btn.disabled {
+  opacity: 0.45;
+  cursor: default;
+  box-shadow: none;
+}
+.file-action-btn:hover {
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  box-shadow: 0 8px 20px rgba(2, 6, 23, 0.08);
+}
+.options {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.options label {
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+}
+.target-label {
+  display: inline-block;
+  transform: translateY(-6px);
+  margin-bottom: 2px;
+}
+.list {
+  background: var(--card);
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: 0 6px 18px rgba(37, 36, 56, 0.06);
+}
+
+/* In dark theme, make the file list slightly transparent so background blobs are visible */
+body.dark .list {
+  /* blend the card color with transparency so blobs can show through */
+  background: rgba(15, 17, 36, 0.62);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 6px 18px rgba(2, 6, 23, 0.06);
+}
+
+/* make individual list rows a touch more translucent in dark mode */
+body.dark .list li {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.012),
+    rgba(255, 255, 255, 0.006)
+  );
+}
+.list-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.list ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.list li {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px;
+  border-radius: 10px;
+  margin-bottom: 6px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.02),
+    rgba(255, 255, 255, 0.01)
+  );
+  transition: transform 180ms ease, box-shadow 180ms ease, background 180ms ease;
+}
+.list li:nth-child(odd) {
+  background: rgba(255, 255, 255, 0.02);
+}
+/* match the website mock hover: lift, shadow, and slightly brighter background */
+.list li:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 18px 40px rgba(2, 6, 23, 0.45);
+  background: rgba(255, 255, 255, 0.02);
+}
+/* persist hover look when JS flags an item as hovering (prevents flicker on re-renders) */
+.list li.hovering {
+  transform: translateY(-4px) !important;
+  box-shadow: 0 18px 40px rgba(2, 6, 23, 0.45) !important;
+  background: rgba(255, 255, 255, 0.02) !important;
+}
+.file-meta {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.file-meta img {
+  width: 46px;
+  height: 46px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+/* fade-in for thumbnails */
+.thumb-fade {
+  opacity: 0;
+  transform: scale(0.98);
+  transition: opacity 280ms ease, transform 280ms ease;
+}
+.thumb-fade.show {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.recent-outputs {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.recent-outputs .item {
+  background: rgba(255, 255, 255, 0.02);
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+.file-info {
+  display: flex;
+  flex-direction: column;
+}
+.file-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+/* grouped action buttons (cancel + remove) */
+.file-action-buttons {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.file-action-buttons .file-action-btn {
+  padding: 6px 8px;
+  border-radius: 8px;
+}
+.file-action-btn.remove {
+  color: #ff6b6b;
+}
+.file-action-btn.cancel {
+  color: var(--muted);
+}
+.progress-bar {
+  width: 220px;
+  height: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: inset 0 -2px 8px rgba(2, 6, 23, 0.03);
+}
+.progress-bar > i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), #4f46e5);
+  width: 0%;
+  transition: width 600ms cubic-bezier(0.22, 0.9, 0.32, 1);
+  will-change: width;
+}
+.footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+#status {
+  color: var(--muted);
+  font-size: 13px;
+}
+.progress {
+  height: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.progress > i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), #4f46e5);
+  width: 0%;
+  transition: width 600ms cubic-bezier(0.22, 0.9, 0.32, 1);
+  will-change: width;
+}
+
+/* Custom scrollbar to match app style */
+body::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+body::-webkit-scrollbar-track {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.01),
+    rgba(0, 0, 0, 0.02)
+  );
+  border-radius: 12px;
+  margin: 8px 0;
+}
+body::-webkit-scrollbar-thumb {
+  background: linear-gradient(
+    180deg,
+    rgba(124, 58, 237, 0.9),
+    rgba(79, 70, 229, 0.9)
+  );
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(16, 24, 40, 0.18);
+}
+body.dark::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.02);
+}
+body.dark::-webkit-scrollbar-thumb {
+  background: linear-gradient(
+    180deg,
+    rgba(124, 58, 237, 0.8),
+    rgba(79, 70, 229, 0.8)
+  );
+}
+.small {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* About modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  /* hide visually but keep layout so child can animate */
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 220ms ease;
+}
+.modal-overlay.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.about-modal {
+  background: var(--card);
+  color: var(--text);
+  padding: 18px;
+  border-radius: 12px;
+  width: 480px;
+  box-shadow: 0 20px 60px rgba(2, 6, 23, 0.4);
+  transform: translateY(14px) scale(0.985);
+  opacity: 0;
+  transition: transform 260ms cubic-bezier(0.2, 0.9, 0.28, 1),
+    opacity 200ms ease;
+}
+.modal-overlay.visible .about-modal {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+}
+
+/* Make the About button match the app primary style */
+#aboutBtn {
+  background: linear-gradient(90deg, #4f46e5, #7c3aed);
+  color: white;
+  border: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-weight: 600;
+  box-shadow: 0 6px 18px rgba(16, 24, 40, 0.04);
+}
+#aboutBtn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px rgba(16, 24, 40, 0.12);
+}

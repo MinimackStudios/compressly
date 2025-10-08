@@ -1,0 +1,45 @@
+{
+  "name": "video-image-compressor",
+  "version": "1.0.1",
+  "description": "Electron app to compress videos and images under 10 MB",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder"
+  },
+  "private": true,
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^26.0.0",
+    "electron-builder": "^24.0.0"
+  },
+  "dependencies": {
+    "ffmpeg-static": "^5.0.0",
+    "fluent-ffmpeg": "^2.1.2",
+    "sharp": "^0.32.4",
+    "electron-store": "^8.1.0",
+    "file-type": "^18.0.0"
+  }
+  ,
+  "build": {
+    "productName": "Compressly",
+    "appId": "com.compressly.app",
+    "files": [
+      "**/*"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": ["nsis"],
+      "icon": "src/compressly.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Compressly</title>
+    <link rel="icon" href="./compressly.ico" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <!-- decorative background blobs (matches website) -->
+      <div class="bg-blobs" aria-hidden="true">
+        <span class="blob b1"></span>
+        <span class="blob b2"></span>
+        <span class="blob b3"></span>
+      </div>
+      <header class="topbar">
+        <div
+          style="
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            width: 100%;
+            justify-content: space-between;
+          "
+        >
+          <div>
+            <div class="brand">Compressly</div>
+            <div class="subtitle">
+              Compress images & videos without sacrificing too much quality
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px">
+            <label class="small" for="themeToggle">Dark</label>
+            <input
+              id="themeToggle"
+              type="checkbox"
+              aria-label="Toggle dark theme"
+            />
+            <button
+              id="aboutBtn"
+              class="btn"
+              style="padding: 8px 10px; font-weight: 600"
+            >
+              About
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main class="container">
+        <section class="controls">
+          <button id="pick" class="btn primary">Select Files</button>
+          <div class="options">
+            <label>
+              <span class="target-label">Target size (MB)</span>
+              <input
+                id="targetSize"
+                class="target-input"
+                type="number"
+                min="1"
+                max="50"
+                value="10"
+              />
+            </label>
+
+            <label>
+              <span class="fps-label">FPS</span>
+              <input
+                id="videoFps"
+                class="fps-input"
+                type="number"
+                min="1"
+                max="120"
+                value="30"
+              />
+            </label>
+
+            <label class="select-label">
+              <span class="resolution-label">Target resolution</span>
+              <select id="targetResolution" class="priority-select">
+                <option value="480p">480p</option>
+                <option value="720p" selected>720p</option>
+                <option value="1080p">1080p</option>
+              </select>
+            </label>
+
+            <label class="select-label">
+              <span class="priority-label">Priority</span>
+              <select id="prioritySelect" class="priority-select">
+                <option value="balanced">Balanced</option>
+                <option value="video">Better Video</option>
+                <option value="audio">Better Audio</option>
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <section class="list" id="dropArea">
+          <div class="drop-hint small">
+            Drag & drop files here, or click "Select Files"
+          </div>
+          <ul id="fileList"></ul>
+        </section>
+
+        <section class="footer">
+          <div style="display: flex; align-items: center; gap: 12px">
+            <div id="status">Ready</div>
+            <div
+              id="footer-info"
+              class="small"
+              style="margin-left: 8px; color: var(--muted)"
+            ></div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px">
+            <button id="clearList" class="file-action-btn" title="Clear list">
+              Clear
+            </button>
+            <!-- openOutput removed -->
+            <button id="start" class="btn success">Compress Selected</button>
+          </div>
+        </section>
+        <!-- recentOutputs removed -->
+      </main>
+
+      <!-- About modal -->
+      <div id="aboutModal" class="modal-overlay">
+        <div class="about-modal">
+          <button id="aboutClose" class="file-action-btn" style="float: right">
+            ✕
+          </button>
+          <h2>Compressly</h2>
+          <div id="aboutBody">
+            <p>
+              A small, local Electron app to compress videos and images for
+              easier sharing.
+            </p>
+            <p><strong>Version:</strong> <span id="aboutVersion">?</span></p>
+            <p><strong>Author:</strong> <span id="aboutAuthor">?</span></p>
+            <p><strong>Runtime:</strong> <span id="aboutRuntime">?</span></p>
+            <p id="aboutDeps"></p>
+            <p style="margin-top: 6px; color: #ffcc00; font-weight: 600">
+              Files with a "#" in their name will fail to generate a thumbnail.
+              Please ensure all files opened in Compressly do not have a "#" in
+              their names.
+            </p>
+            <p style="margin-top: 8px" class="small">
+              All processing happens locally on your machine using FFmpeg and
+              Sharp.
+            </p>
+              <button
+                type="button"
+                class="btn primary ffmpeg-link"
+                data-url="https://github.com/MinimackStudios/compressly"
+                aria-label="Open Compressly on GitHub"
+              >
+                View on GitHub
+              </button>
+            </p>
+          </div>
+        </div>
+      </div>
+      <!-- FFmpeg missing notice modal -->
+      <div id="ffmpegModal" class="modal-overlay">
+        <div class="about-modal">
+          <h3>FFmpeg required</h3>
+          <div style="margin-top: 8px">
+            <p>
+              Please make sure FFmpeg is installed and added to your system
+              PATH. Compressly relies on FFmpeg for video processing and
+              thumbnail generation.
+            </p>
+            <p>
+              Helpful links:
+              <a
+                href="https://ffmpeg.org"
+                class="ffmpeg-link"
+                data-url="https://ffmpeg.org"
+                >ffmpeg.org</a
+              >
+              ·
+              <a
+                href="https://www.gyan.dev/ffmpeg/builds/"
+                class="ffmpeg-link"
+                data-url="https://www.gyan.dev/ffmpeg/builds/"
+                >Windows builds</a
+              >
+              ·
+              <a
+                href="https://youtu.be/6sim9aF3g2c"
+                class="ffmpeg-link"
+                data-url="https://youtu.be/6sim9aF3g2c"
+                >YouTube Guide</a
+              >
+            </p>
+            <label
+              style="
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin-top: 10px;
+              "
+            >
+              <input type="checkbox" id="ffmpegDontShow" />
+              <span class="small">Don't show again</span>
+            </label>
+            <div
+              style="display: flex; justify-content: flex-end; margin-top: 12px"
+            >
+              <button id="ffmpegOk" class="btn primary">OK</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="./renderer.js"></script>
+  </body>
+</html>
