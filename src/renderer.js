@@ -1086,6 +1086,47 @@ try {
         }
       });
     });
+    // copy-to-clipboard for the ffmpeg install command
+    try {
+      const copyBtn = document.getElementById("ffmpegCopyBtn");
+      const cmdEl = document.getElementById("ffmpegCmd");
+      if (copyBtn && cmdEl) {
+        copyBtn.addEventListener("click", async () => {
+          const txt = cmdEl.textContent || cmdEl.innerText || "";
+          let ok = false;
+          try {
+            if (
+              navigator &&
+              navigator.clipboard &&
+              navigator.clipboard.writeText
+            ) {
+              await navigator.clipboard.writeText(txt);
+              ok = true;
+            }
+          } catch (e) {}
+          if (!ok) {
+            try {
+              const ta = document.createElement("textarea");
+              ta.value = txt;
+              document.body.appendChild(ta);
+              ta.select();
+              document.execCommand("copy");
+              document.body.removeChild(ta);
+              ok = true;
+            } catch (e) {
+              ok = false;
+            }
+          }
+          const prev = copyBtn.textContent;
+          if (ok) {
+            copyBtn.textContent = "Copied!";
+          } else {
+            copyBtn.textContent = "Copy failed";
+          }
+          setTimeout(() => (copyBtn.textContent = prev), 1500);
+        });
+      }
+    } catch (e) {}
   }
 
   if (ffmpegOk) {

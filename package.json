@@ -1,6 +1,6 @@
 {
   "name": "video-image-compressor",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Electron app to compress videos and images under 10 MB",
   "main": "src/main.js",
   "scripts": {
@@ -20,8 +20,7 @@
     "sharp": "^0.32.4",
     "electron-store": "^8.1.0",
     "file-type": "^18.0.0"
-  }
-  ,
+  },
   "build": {
     "productName": "Compressly",
     "appId": "com.compressly.app",

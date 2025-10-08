@@ -173,6 +173,33 @@ body {
   box-shadow: 0 12px 30px rgba(16, 24, 40, 0.12);
 }
 
+/* FFmpeg install command block */
+.ffmpeg-install {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+.ffmpeg-install pre {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #111;
+  color: #fff; /* ensure visible on both themes */
+  font-family: SFMono-Regular, Menlo, Monaco, "Roboto Mono", monospace;
+  font-size: 13px;
+  box-shadow: 0 6px 18px rgba(2, 6, 23, 0.2);
+}
+.ffmpeg-install button {
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+
+/* light theme tweak: keep the pre block dark so text remains readable */
+body:not(.dark) .ffmpeg-install pre {
+  background: #111;
+  color: #fff;
+}
+
 .target-input {
   padding: 8px 10px;
   border-radius: 8px;
