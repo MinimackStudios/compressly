@@ -81,6 +81,10 @@
             <label class="select-label">
               <span class="resolution-label">Target resolution</span>
               <select id="targetResolution" class="priority-select">
+                <option value="64p">64p</option>
+                <option value="144p">144p</option>
+                <option value="240p">240p</option>
+                <option value="360p">360p</option>
                 <option value="480p">480p</option>
                 <option value="720p" selected>720p</option>
                 <option value="1080p">1080p</option>
@@ -236,6 +240,22 @@
             <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px">
               <button id="updateDownloadBtn" class="btn success">Download</button>
               <button id="updateViewBtn" class="btn primary">View release</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Long video warning modal -->
+      <div id="longVideoModal" class="modal-overlay">
+        <div class="about-modal">
+          <button id="longVideoClose" class="file-action-btn" style="float: right">✕</button>
+          <h3>Long video(s) detected</h3>
+          <div id="longVideoBody" style="margin-top:8px">
+            <p class="small">
+              One or more videos you added are longer than 30 minutes. These files are likely to be larger than the target size even after aggressive compression.
+            </p>
+            <div id="longVideoList" style="max-height:180px; overflow:auto; margin-top:6px; color:var(--muted);"></div>
+            <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px">
+              <button id="longVideoIgnore" class="btn">Continue anyway</button>
             </div>
           </div>
         </div>

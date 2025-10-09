@@ -9,6 +9,167 @@ const targetResolutionEl = document.getElementById("targetResolution");
 const footerInfoEl = document.getElementById("footer-info");
 const clearBtn = document.getElementById("clearList");
 
+// Ensure update download always works: centralized download function and click handler
+async function downloadLatestReleaseFromGitHub() {
+  const downloadBtn = document.getElementById("updateDownloadBtn");
+  if (!downloadBtn) return;
+  // guard against double-clicks
+  if (downloadBtn.dataset.running === "1") return;
+  downloadBtn.dataset.running = "1";
+  try {
+    downloadBtn.disabled = true;
+    downloadBtn.classList.add("loading");
+    const progressWrap = document.getElementById("updateProgressWrap");
+    const progEl = document.getElementById("updateProgressBar");
+    const pctEl = document.getElementById("updateProgressPct");
+
+    if (progressWrap) progressWrap.style.display = "block";
+    if (pctEl) pctEl.style.display = "block";
+    if (progEl) progEl.style.width = "0%";
+    if (pctEl) pctEl.textContent = "0%";
+
+    const r = await fetch(
+      "https://api.github.com/repos/MinimackStudios/compressly/releases/latest",
+      { headers: { Accept: "application/vnd.github.v3+json" } }
+    );
+    if (!r.ok) throw new Error("Could not fetch release info");
+    const d = await r.json();
+    const assets = d.assets || [];
+    if (!assets.length) {
+      // nothing to download for this release — report and bail
+      try {
+        if (statusEl)
+          statusEl.textContent =
+            "No downloadable installer found for the latest release.";
+      } catch (e) {}
+      return;
+    }
+    const asset = assets[0];
+    const assetUrl = asset.browser_download_url;
+    const defaultName =
+      asset.name || `compressly-${(d.tag_name || "").replace(/^v/i, "")}.zip`;
+    if (!assetUrl) {
+      try {
+        if (statusEl)
+          statusEl.textContent = "Release asset missing or unavailable.";
+      } catch (e) {}
+      return;
+    }
+
+    const resp = await fetch(assetUrl);
+    if (!resp.ok) throw new Error("Failed to download asset");
+
+    const contentLength = resp.headers.get("content-length");
+    const totalBytes = contentLength ? parseInt(contentLength, 10) : 0;
+    const reader =
+      resp.body && resp.body.getReader ? resp.body.getReader() : null;
+    const chunks = [];
+    let received = 0;
+
+    if (reader) {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        received += value.length || value.byteLength || 0;
+        if (progEl && totalBytes) {
+          const pct = Math.round((received / totalBytes) * 100);
+          progEl.style.width = pct + "%";
+          if (pctEl) pctEl.textContent = pct + "%";
+        }
+      }
+    } else {
+      const arrayBuffer = await resp.arrayBuffer();
+      chunks.push(new Uint8Array(arrayBuffer));
+      received = arrayBuffer.byteLength || 0;
+      if (progEl && totalBytes) {
+        const pct = Math.round((received / totalBytes) * 100);
+        progEl.style.width = pct + "%";
+        if (pctEl) pctEl.textContent = pct + "%";
+      }
+    }
+
+    // concatenate
+    let length = 0;
+    for (const c of chunks) length += c.length || c.byteLength || 0;
+    const merged = new Uint8Array(length);
+    let offset = 0;
+    for (const c of chunks) {
+      merged.set(c instanceof Uint8Array ? c : new Uint8Array(c), offset);
+      offset += c.length || c.byteLength || 0;
+    }
+
+    const os = require("os");
+    const path = require("path");
+    const downloadsDir = path.join(os.homedir(), "Downloads");
+    const savePath = path.join(downloadsDir, defaultName);
+
+    if (window.electronAPI && window.electronAPI.writeFile) {
+      await window.electronAPI.writeFile(savePath, Buffer.from(merged));
+      try {
+        const { shell } = require("electron");
+        if (shell && shell.showItemInFolder) shell.showItemInFolder(savePath);
+        else shell.openPath(downloadsDir);
+      } catch (e) {
+        try {
+          window.open(downloadsDir, "_blank");
+        } catch (e) {}
+      }
+      // attempt to run installer via main ipc
+      try {
+        const { ipcRenderer } = require("electron");
+        if (ipcRenderer && ipcRenderer.send)
+          ipcRenderer.send("run-installer-and-exit", savePath, []);
+      } catch (e) {}
+    } else {
+      // fallback: open releases page
+      const url =
+        d.html_url ||
+        localStorage.getItem("compressly_update_latestUrl") ||
+        "https://github.com/MinimackStudios/compressly/releases";
+      try {
+        require("electron").shell.openExternal(url);
+      } catch (e) {
+        window.open(url, "_blank");
+      }
+    }
+
+    // finish UI
+    if (progEl) progEl.style.width = "100%";
+    if (pctEl) pctEl.textContent = "100%";
+    setTimeout(() => {
+      if (progressWrap) progressWrap.style.display = "none";
+      if (pctEl) pctEl.style.display = "none";
+      downloadBtn.classList.remove("loading");
+      downloadBtn.disabled = false;
+    }, 600);
+  } catch (err) {
+    console.warn("download failed", err);
+    try {
+      const progressWrap = document.getElementById("updateProgressWrap");
+      if (progressWrap) progressWrap.style.display = "none";
+      const downloadBtn = document.getElementById("updateDownloadBtn");
+      if (downloadBtn) {
+        downloadBtn.classList.remove("loading");
+        downloadBtn.disabled = false;
+      }
+    } catch (e) {}
+  } finally {
+    const downloadBtn = document.getElementById("updateDownloadBtn");
+    if (downloadBtn) downloadBtn.dataset.running = "0";
+  }
+}
+
+// attach always-present handler
+try {
+  const dl = document.getElementById("updateDownloadBtn");
+  if (dl)
+    dl.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      downloadLatestReleaseFromGitHub();
+    });
+} catch (e) {}
+
 // Settings persistence keys
 const SETTINGS_KEYS = {
   targetSize: "compressly_targetSize",
@@ -90,27 +251,29 @@ try {
       let latestUrl =
         localStorage.getItem("compressly_update_latestUrl") || null;
 
-      if (!lastChecked || now - lastChecked > twelveHours || !latestTag) {
-        try {
-          const res = await fetch(
-            "https://api.github.com/repos/MinimackStudios/compressly/releases/latest",
-            { headers: { Accept: "application/vnd.github.v3+json" } }
-          );
-          if (res.ok) {
-            const data = await res.json();
-            latestTag = (data.tag_name || data.name || "").replace(/^v/i, "");
-            latestUrl =
-              data.html_url ||
-              "https://github.com/MinimackStudios/compressly/releases";
-            localStorage.setItem(CACHE_KEY, String(now));
-            if (latestTag)
-              localStorage.setItem("compressly_update_latestTag", latestTag);
-            if (latestUrl)
-              localStorage.setItem("compressly_update_latestUrl", latestUrl);
-          }
-        } catch (e) {
-          // network failure — fall back to cached tag when available
+      // Always attempt to fetch the latest release from GitHub on startup so
+      // we don't rely on stale cached values. If the network call fails we
+      // will gracefully fall back to any cached tag/url already stored.
+      try {
+        const res = await fetch(
+          "https://api.github.com/repos/MinimackStudios/compressly/releases/latest",
+          { headers: { Accept: "application/vnd.github.v3+json" } }
+        );
+        if (res.ok) {
+          const data = await res.json();
+          latestTag = (data.tag_name || data.name || "").replace(/^v/i, "");
+          latestUrl =
+            data.html_url ||
+            "https://github.com/MinimackStudios/compressly/releases";
+          // update cache timestamp and stored values
+          localStorage.setItem(CACHE_KEY, String(now));
+          if (latestTag)
+            localStorage.setItem("compressly_update_latestTag", latestTag);
+          if (latestUrl)
+            localStorage.setItem("compressly_update_latestUrl", latestUrl);
         }
+      } catch (e) {
+        // network failure — keep using cached latestTag/latestUrl if present
       }
 
       if (!latestTag) return; // nothing to compare
@@ -318,6 +481,8 @@ try {
   })();
 } catch (e) {}
 
+// (Removed fallback that opened the releases page - Download now only attempts the installer download)
+
 // Prune cache files older than 7 days (run async, don't block UI)
 setTimeout(() => {
   try {
@@ -502,6 +667,43 @@ pickBtn.addEventListener("click", async () => {
       `Added ${added.length} file(s)` +
       (skipped.length ? `, skipped ${skipped.length} duplicate(s)` : "");
     updateFooterInfo();
+    // check for long videos among newly added files
+    try {
+      const longVideos = [];
+      if (added.length) {
+        const ffmpeg = require("fluent-ffmpeg");
+        const getMeta = (src) =>
+          new Promise((res, rej) =>
+            ffmpeg.ffprobe(src, (err, meta) => (err ? rej(err) : res(meta)))
+          );
+        for (const p of added) {
+          try {
+            const ext = require("path").extname(p).toLowerCase();
+            if (!VIDEO_EXTS.includes(ext)) continue;
+            const meta = await getMeta(p);
+            const dur = (meta && meta.format && meta.format.duration) || 0;
+            if (dur > 30 * 60) longVideos.push({ path: p, duration: dur });
+          } catch (e) {}
+        }
+      }
+      if (longVideos.length) {
+        const listEl = document.getElementById("longVideoList");
+        if (listEl) {
+          listEl.innerHTML = longVideos
+            .map(
+              (v) =>
+                `<div style="padding:6px 0;border-bottom:1px solid var(--muted);">${require("path").basename(
+                  v.path
+                )} — ${Math.floor(v.duration / 60)}m ${Math.round(
+                  v.duration % 60
+                )}s</div>`
+            )
+            .join("");
+        }
+        const modal = document.getElementById("longVideoModal");
+        if (modal) modal.classList.add("visible");
+      }
+    } catch (e) {}
   } catch (err) {
     console.error("select files failed", err);
     statusEl.textContent = "Error opening file picker — see console";
@@ -568,6 +770,41 @@ if (dropArea) {
       if (skipped.length) msg += `, skipped ${skipped.length} duplicate(s)`;
       statusEl.textContent = msg;
       updateFooterInfo();
+      // check for long videos among newly added files
+      try {
+        const actuallyLong = [];
+        const ffmpeg = require("fluent-ffmpeg");
+        const getMeta = (src) =>
+          new Promise((res, rej) =>
+            ffmpeg.ffprobe(src, (err, meta) => (err ? rej(err) : res(meta)))
+          );
+        for (const p of actuallyAdded) {
+          try {
+            const ext = require("path").extname(p).toLowerCase();
+            if (!VIDEO_EXTS.includes(ext)) continue;
+            const meta = await getMeta(p);
+            const dur = (meta && meta.format && meta.format.duration) || 0;
+            if (dur > 30 * 60) actuallyLong.push({ path: p, duration: dur });
+          } catch (e) {}
+        }
+        if (actuallyLong.length) {
+          const listEl = document.getElementById("longVideoList");
+          if (listEl) {
+            listEl.innerHTML = actuallyLong
+              .map(
+                (v) =>
+                  `<div style="padding:6px 0;border-bottom:1px solid var(--muted);">${require("path").basename(
+                    v.path
+                  )} — ${Math.floor(v.duration / 60)}m ${Math.round(
+                    v.duration % 60
+                  )}s</div>`
+              )
+              .join("");
+          }
+          const modal = document.getElementById("longVideoModal");
+          if (modal) modal.classList.add("visible");
+        }
+      } catch (e) {}
     } else if (ignoredNames.length) {
       const shown = ignoredNames.slice(0, 6).join(", ");
       statusEl.textContent =
@@ -618,9 +855,28 @@ if (dropArea) {
         aboutModal.classList.remove("visible");
         if (ffmpegModal) ffmpegModal.classList.remove("visible");
         if (updateModal) updateModal.classList.remove("visible");
+        if (longVideoModal) longVideoModal.classList.remove("visible");
       }
     });
   }
+  // long video modal handlers
+  try {
+    const longClose = document.getElementById("longVideoClose");
+    const longIgnore = document.getElementById("longVideoIgnore");
+    const longModal = document.getElementById("longVideoModal");
+    if (longClose)
+      longClose.addEventListener("click", () =>
+        longModal.classList.remove("visible")
+      );
+    if (longIgnore)
+      longIgnore.addEventListener("click", () =>
+        longModal.classList.remove("visible")
+      );
+    if (longModal)
+      longModal.addEventListener("click", (ev) => {
+        if (ev.target === longModal) longModal.classList.remove("visible");
+      });
+  } catch (e) {}
 
   // Footer info update function
   function updateFooterInfo() {
@@ -637,22 +893,20 @@ if (dropArea) {
       const totalMB = (total / 1024 / 1024).toFixed(2);
       const targetMB = parseFloat(targetSizeEl.value || "10");
       footerInfoEl.textContent = `${files.length} file(s) • ${totalMB} MB total`;
-      // compute compressed total from produced outputs when available
+      // compute compressed total from outputs (live): prefer outPath while processing, fallback to lastOut
       let compressedTotal = 0;
       for (const p of files) {
         try {
-          if (fileStates[p] && fileStates[p].lastOut) {
-            const st = fs.statSync(fileStates[p].lastOut);
+          const state = fileStates[p] || {};
+          const outCandidate = state.outPath || state.lastOut || null;
+          if (outCandidate && fs.existsSync(outCandidate)) {
+            const st = fs.statSync(outCandidate);
             compressedTotal += st.size || 0;
           }
         } catch (e) {}
       }
-      const compressedMB = compressedTotal
-        ? (compressedTotal / 1024 / 1024).toFixed(2)
-        : null;
-      footerInfoEl.textContent =
-        `${files.length} file(s) • ${totalMB} MB total` +
-        (compressedMB ? ` • compressed ${compressedMB} MB` : "");
+      const compressedMB = (compressedTotal / 1024 / 1024).toFixed(2);
+      footerInfoEl.textContent = `${files.length} file(s) • ${totalMB} MB total • compressed ${compressedMB} MB`;
     } catch (e) {
       console.warn("updateFooterInfo failed", e);
     }
@@ -1042,6 +1296,10 @@ async function compressImage(p, buffer, ft, targetMB, onProgress) {
     count++;
   }
 
+  // expose outPath early so UI can stat an in-progress output file
+  if (!fileStates[p]) fileStates[p] = {};
+  fileStates[p].outPath = outPath;
+
   // load image and metadata
   const img = sharp(buffer, { limitInputPixels: false });
   const metadata = await img.metadata();
@@ -1103,18 +1361,24 @@ async function compressImage(p, buffer, ft, targetMB, onProgress) {
     } catch (e) {}
 
     if (data.length <= targetBytes || pass === 9) {
+      // ensure outPath is visible to UI before/while writing
+      if (!fileStates[p]) fileStates[p] = {};
+      fileStates[p].outPath = outPath;
       await window.electronAPI.writeFile(outPath, data);
       // If the user cancelled while the final write was happening, remove the file
       try {
         if (fileStates[p] && fileStates[p].cancelRequested) {
           const fs = require("fs");
           if (fs.existsSync(outPath)) fs.unlinkSync(outPath);
+          // clear exposed outPath when we removed the file
+          if (fileStates[p]) fileStates[p].outPath = null;
           if (onProgress) onProgress(0, "cancelled");
           return null;
         }
       } catch (e) {}
       if (!fileStates[p]) fileStates[p] = {};
       fileStates[p].lastOut = outPath;
+      // leave outPath set to the final file so footer shows compressed size
       if (onProgress) onProgress(100, "done", outPath);
       return outPath;
     }
@@ -1126,8 +1390,10 @@ async function compressImage(p, buffer, ft, targetMB, onProgress) {
 
   // fallback (shouldn't reach here) - write original buffer
   try {
-    await window.electronAPI.writeFile(outPath, buffer);
+    // ensure outPath is exposed while writing the fallback
     if (!fileStates[p]) fileStates[p] = {};
+    fileStates[p].outPath = outPath;
+    await window.electronAPI.writeFile(outPath, buffer);
     fileStates[p].lastOut = outPath;
     if (onProgress) onProgress(100, "done", outPath);
     return outPath;
@@ -1186,16 +1452,46 @@ async function compressVideo(p, targetMB, onProgress, opts = {}) {
     adjAudioBitrate = Math.max(128, Math.round(audioBitrate * 1.4));
   }
   // Calculate target video bitrate (kbps) subtracting expected audio size
-  const videoBitrate = Math.max(
-    200,
-    Math.round(((targetBytes * 8) / duration - adjAudioBitrate * 1000) / 1000)
-  ); // kbps
+  // Compute total target in kbps
+  const totalTargetKbps = Math.max(
+    1,
+    Math.round((targetBytes * 8) / duration / 1000)
+  );
+
+  // Allocate audio budget adaptively. If the audio alone would exceed the total
+  // budget, we must force a much smaller audio bitrate (or drop audio) so the
+  // video can fit within the target size. For tiny targets allocate a small
+  // proportional share to audio.
+  let audioAllocKbps;
+  if (totalTargetKbps <= 64) {
+    // very small targets: give audio a tiny share
+    audioAllocKbps = Math.max(8, Math.round(totalTargetKbps * 0.15));
+  } else if (totalTargetKbps <= 256) {
+    audioAllocKbps = Math.max(16, Math.round(totalTargetKbps * 0.12));
+  } else {
+    // for larger targets, allow more audio but cap to the detected audio bitrate
+    audioAllocKbps = Math.min(
+      adjAudioBitrate,
+      Math.round(totalTargetKbps * 0.15)
+    );
+  }
+
+  // Ensure audioAllocKbps doesn't exceed total target
+  audioAllocKbps = Math.min(audioAllocKbps, Math.max(1, totalTargetKbps - 1));
+
+  // Now compute video bitrate budget (kbps). Allow it to go low (>=16kbps) so
+  // we can meet very small targets instead of clamping up and producing larger
+  // files.
+  let videoBitrate = Math.max(16, totalTargetKbps - audioAllocKbps);
 
   return new Promise((resolve, reject) => {
     const cmd = ffmpeg(p);
     if (!fileStates[p]) fileStates[p] = {};
     fileStates[p].cmd = cmd;
     fileStates[p].status = "processing";
+    // expose outPath so the UI can stat a growing output file while ffmpeg writes
+    if (!fileStates[p]) fileStates[p] = {};
+    fileStates[p].outPath = outPath;
     if (onProgress) onProgress(0, "processing", outPath);
     // build video filter to respect target resolution and preserve portrait orientation
     // targetResolution: auto / 480p / 720p / 1080p
@@ -1203,9 +1499,28 @@ async function compressVideo(p, targetMB, onProgress, opts = {}) {
       (opts && opts.resolution) ||
       (targetResolutionEl && targetResolutionEl.value) ||
       "auto";
+    // default to 720p if not specified
     let maxW = 1280,
       maxH = 720;
-    if (resChoice === "480p") {
+    // Map resolution labels to target box (width x height)
+    // New supported resolutions: 64p, 144p, 240p, 360p, 480p, 720p, 1080p
+    if (resChoice === "64p") {
+      // very small: 112x64 (approx 16:9)
+      maxW = 112;
+      maxH = 64;
+    } else if (resChoice === "144p") {
+      // 256x144 (16:9)
+      maxW = 256;
+      maxH = 144;
+    } else if (resChoice === "240p") {
+      // 426x240 (approx 16:9)
+      maxW = 426;
+      maxH = 240;
+    } else if (resChoice === "360p") {
+      // 640x360
+      maxW = 640;
+      maxH = 360;
+    } else if (resChoice === "480p") {
       maxW = 854;
       maxH = 480;
     } else if (resChoice === "720p") {
@@ -1220,9 +1535,12 @@ async function compressVideo(p, targetMB, onProgress, opts = {}) {
     const vf = `scale='if(gt(iw/ih,${maxW}/${maxH}),min(${maxW},iw),-2)':'if(gt(iw/ih,${maxW}/${maxH}),-2,min(${maxH},ih))'`;
 
     // If audio codec is already AAC we can copy to preserve quality and avoid re-encoding
+    // Constrain encoder to the computed average bitrate using maxrate/bufsize
     const outOpts = [
       "-c:v libx264",
       `-b:v ${videoBitrate}k`,
+      `-maxrate ${videoBitrate}k`,
+      `-bufsize ${Math.max(2, Math.round(videoBitrate * 2))}k`,
       "-preset fast",
       "-movflags +faststart",
       "-pix_fmt yuv420p",
@@ -1233,11 +1551,15 @@ async function compressVideo(p, targetMB, onProgress, opts = {}) {
         ? Math.max(1, Math.min(120, Math.round(opts.fps)))
         : null;
     if (fps) outOpts.push(`-r ${fps}`);
-    if (audioCodec === "aac") {
+    // If the existing audio bitrate is small enough to fit in our allocation
+    // and the user didn't force a different priority, we could copy, otherwise
+    // re-encode audio to the allocated audio bitrate so the total size stays
+    // within budget.
+    if (audioCodec === "aac" && adjAudioBitrate <= audioAllocKbps) {
       outOpts.push("-c:a copy");
     } else {
-      // re-encode audio at source bitrate (or fallback)
-      outOpts.push("-c:a aac", `-b:a ${adjAudioBitrate}k`);
+      // re-encode audio at the allocated audio bitrate
+      outOpts.push("-c:a aac", `-b:a ${audioAllocKbps}k`);
     }
 
     cmd
@@ -1259,12 +1581,15 @@ async function compressVideo(p, targetMB, onProgress, opts = {}) {
           try {
             const fs = require("fs");
             if (fs.existsSync(outPath)) fs.unlinkSync(outPath);
+            // clear exposed outPath when partial output removed
+            if (fileStates[p]) fileStates[p].outPath = null;
           } catch (e) {}
           if (onProgress) onProgress(0, "cancelled");
           return resolve(null);
         }
         if (!fileStates[p]) fileStates[p] = {};
         fileStates[p].lastOut = outPath;
+        // keep outPath set to final file so footer can stat it
         if (onProgress) onProgress(100, "done", outPath);
         resolve(outPath);
       })
@@ -1273,6 +1598,8 @@ async function compressVideo(p, targetMB, onProgress, opts = {}) {
         try {
           const fs = require("fs");
           if (fs.existsSync(outPath)) fs.unlinkSync(outPath);
+          // clear exposed outPath on error
+          if (fileStates[p]) fileStates[p].outPath = null;
         } catch (e) {}
         if (fileStates[p]) fileStates[p].cmd = null;
         reject(err);
