@@ -1,6 +1,6 @@
 {
   "name": "video-image-compressor",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Electron app to compress videos and images under 10 MB",
   "main": "src/main.js",
   "scripts": {

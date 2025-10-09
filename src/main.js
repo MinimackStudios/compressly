@@ -34,6 +34,9 @@ function createWindow() {
       // Allow renderer require() and built-in modules for this local app.
       // NOTE: this reduces isolation; we can refactor to use IPC-only access later.
       contextIsolation: false,
+      // Prevent Chromium from throttling timers/raf when the window is in the
+      // background or minimized so taskbar progress updates continue.
+      backgroundThrottling: false,
       nodeIntegration: true,
     },
   });
@@ -78,6 +81,14 @@ ipcMain.handle("select-files", async (event) => {
           "mov",
           "mkv",
           "avi",
+          // audio
+          "mp3",
+          "m4a",
+          "wav",
+          "flac",
+          "aac",
+          "ogg",
+          "opus",
         ],
       },
     ],
@@ -143,4 +154,23 @@ ipcMain.on("run-installer-and-exit", (event, installerPath, args = []) => {
     // Quit the app immediately
     app.quit();
   } catch (e) {}
+});
+
+// Set the taskbar progress for the window (value between 0 and 1). Pass -1 to remove.
+ipcMain.on("set-taskbar-progress", (event, value) => {
+  try {
+    const win =
+      BrowserWindow.fromWebContents(event.sender) ||
+      BrowserWindow.getFocusedWindow();
+    if (win && typeof win.setProgressBar === "function") {
+      // clamp to valid range: -1 (remove) or [0,1]
+      let v = Number(value);
+      if (!isFinite(v)) v = -1;
+      if (v > 1) v = 1;
+      if (v < 0 && v !== -1) v = -1;
+      win.setProgressBar(v);
+    }
+  } catch (e) {
+    console.warn("set-taskbar-progress failed", e);
+  }
 });

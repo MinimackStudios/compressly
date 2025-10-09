@@ -600,6 +600,7 @@ async function estimateCompressedMB(filePath) {
 // Allowed extensions for drag/drop and basic type checks
 const IMAGE_EXTS = [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tiff"];
 const VIDEO_EXTS = [".mp4", ".mov", ".mkv", ".avi", ".webm", ".flv", ".wmv"];
+const AUDIO_EXTS = [".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".opus"];
 
 // Theme initialization
 const themeToggle = document.getElementById("themeToggle");
@@ -737,7 +738,11 @@ if (dropArea) {
         try {
           const p = f.path;
           const ext = require("path").extname(p).toLowerCase();
-          if (IMAGE_EXTS.includes(ext) || VIDEO_EXTS.includes(ext)) {
+          if (
+            IMAGE_EXTS.includes(ext) ||
+            VIDEO_EXTS.includes(ext) ||
+            AUDIO_EXTS.includes(ext)
+          ) {
             accepted.push(p);
           } else {
             ignoredNames.push(require("path").basename(p));
@@ -951,6 +956,15 @@ function renderList() {
         ".flv",
         ".wmv",
       ];
+      const audioExts = AUDIO_EXTS || [
+        ".mp3",
+        ".wav",
+        ".m4a",
+        ".aac",
+        ".flac",
+        ".ogg",
+        ".opus",
+      ];
       if (videoExts.includes(ext)) {
         // use cached thumbnail if available
         if (fileStates[p].thumb) {
@@ -1013,6 +1027,26 @@ function renderList() {
               });
           }
         }
+      } else if (audioExts.includes(ext)) {
+        // show a simple music SVG for audio files using the brand gradient
+        // use a unique gradient id to avoid duplicate-id collisions when multiple SVGs are inserted
+        const _gid = "g" + Math.random().toString(36).slice(2, 8);
+        const svg = `
+            <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='64' height='64'>
+              <defs>
+                <linearGradient id='${_gid}' x1='0%' y1='0%' x2='100%' y2='0%'>
+                  <stop offset='0%' stop-color='#4f46e5' />
+                  <stop offset='100%' stop-color='#ba39ff' />
+                </linearGradient>
+              </defs>
+              <path fill='url(#${_gid})' d='M12 3v10.55A4 4 0 0010 13a4 4 0 100 8 4 4 0 004-4V7h4V3h-6z'/>
+            </svg>`;
+        try {
+          img.src = "data:image/svg+xml;utf8," + encodeURIComponent(svg);
+          img.classList.add("thumb-fade", "show");
+        } catch (e) {
+          img.src = "./file-icon.png";
+        }
       } else {
         // for images, show file directly
         img.src = "file://" + p;
@@ -1021,11 +1055,47 @@ function renderList() {
       console.warn("thumb generation failed", e);
     }
 
+    // Thumbnail click behavior: open original before compression; open compressed after
+    try {
+      img.style.cursor = "pointer";
+      img.addEventListener("click", (ev) => {
+        try {
+          const { shell } = require("electron");
+          const fs = require("fs");
+          const path = require("path");
+          // if compressed output exists for this file, reveal it; otherwise reveal original
+          const state = fileStates[p] || {};
+          const target =
+            state.lastOut && fs.existsSync(state.lastOut) ? state.lastOut : p;
+          try {
+            if (shell && shell.showItemInFolder) shell.showItemInFolder(target);
+            else shell.openPath(path.dirname(target));
+          } catch (e) {
+            try {
+              shell.openPath(path.dirname(target));
+            } catch (ee) {
+              console.warn("reveal failed", ee);
+            }
+          }
+        } catch (e) {
+          console.warn("reveal file failed", e);
+        }
+      });
+    } catch (e) {}
+
     const actions = document.createElement("div");
     actions.className = "file-actions";
     const status = document.createElement("div");
     status.className = "small";
-    status.textContent = fileStates[p].status || "Ready";
+    // show a helpful CTA when the file is done
+    if (
+      (fileStates[p] && fileStates[p].status === "done") ||
+      (fileStates[p] && fileStates[p].progress >= 100)
+    ) {
+      status.textContent = "Done - click thumbnail to reveal location";
+    } else {
+      status.textContent = fileStates[p].status || "Ready";
+    }
     const progressWrap = document.createElement("div");
     progressWrap.className = "progress-bar";
     // allow the progress bar to sit inline so pct label can appear to its right
@@ -1212,26 +1282,9 @@ startBtn.addEventListener("click", async () => {
   statusEl.textContent = anyCancelled ? "Cancelled" : "Done";
   startBtn.disabled = false;
   // open output and highlight first file (skip if user cancelled)
-  try {
-    const { shell } = require("electron");
-    if (firstOutPath && !anyCancelled) {
-      // open and select the first produced file so user sees it immediately
-      try {
-        shell.showItemInFolder(firstOutPath);
-      } catch (e) {
-        // fallback to opening the folder
-        try {
-          if (firstOutDir) shell.openPath(firstOutDir);
-        } catch (e) {}
-      }
-    } else if (firstOutDir && !anyCancelled) {
-      try {
-        shell.openPath(firstOutDir);
-      } catch (e) {}
-    }
-  } catch (e) {
-    console.warn("open folder failed", e);
-  }
+  // removed automatic opening of file explorer per user request
+  // user can now click the thumbnail to open the original file (before compress)
+  // or the compressed file (after compress)
   anyCancelled = false;
 });
 
@@ -1243,6 +1296,7 @@ async function compressFile(p, onProgress) {
 
   const imageExts = IMAGE_EXTS;
   const videoExts = VIDEO_EXTS;
+  const audioExts = AUDIO_EXTS;
 
   if (imageExts.includes(ext)) {
     await compressImage(p, buffer, { ext }, targetMB, onProgress);
@@ -1253,6 +1307,9 @@ async function compressFile(p, onProgress) {
       ? prioritySelectEl.value || "balanced"
       : "balanced";
     await compressVideo(p, targetMB, onProgress, { fps, priority });
+  } else if (audioExts.includes(ext)) {
+    // audio-only file
+    await compressAudio(p, targetMB, onProgress, {});
   } else {
     // Fallback: try to infer from header using file-type if available dynamically
     try {
@@ -1264,6 +1321,10 @@ async function compressFile(p, onProgress) {
       }
       if (ft && ft.mime.startsWith("video/")) {
         await compressVideo(p, targetMB);
+        return;
+      }
+      if (ft && ft.mime.startsWith("audio/")) {
+        await compressAudio(p, targetMB);
         return;
       }
     } catch (e) {
@@ -1484,8 +1545,8 @@ async function compressVideo(p, targetMB, onProgress, opts = {}) {
   // files.
   let videoBitrate = Math.max(16, totalTargetKbps - audioAllocKbps);
 
-  return new Promise((resolve, reject) => {
-    const cmd = ffmpeg(p);
+  return new Promise(async (resolve, reject) => {
+    let cmd = ffmpeg(p);
     if (!fileStates[p]) fileStates[p] = {};
     fileStates[p].cmd = cmd;
     fileStates[p].status = "processing";
@@ -1607,6 +1668,184 @@ async function compressVideo(p, targetMB, onProgress, opts = {}) {
       .save(outPath);
   });
 }
+
+// Compress audio files by re-encoding at a target average bitrate derived from targetMB
+async function compressAudio(p, targetMB, onProgress, opts = {}) {
+  const ffmpegPath = require("ffmpeg-static");
+  const ffmpeg = require("fluent-ffmpeg");
+  try {
+    ffmpeg.setFfmpegPath(resolveBinaryPath(ffmpegPath.path || ffmpegPath));
+  } catch (e) {
+    ffmpeg.setFfmpegPath(ffmpegPath.path || ffmpegPath);
+  }
+
+  const path = require("path");
+  const fs = require("fs");
+
+  // decide codec & output extension. For FLAC inputs we convert to lossy Opus
+  // to achieve meaningful size reduction (FLAC is lossless so re-encoding to
+  // FLAC won't reduce size). finalExt is the extension used for output file.
+  const origExt = path.extname(p).toLowerCase() || ".m4a";
+  let finalExt = origExt;
+  let codec = "aac";
+  if (origExt === ".mp3") {
+    codec = "libmp3lame";
+    finalExt = ".mp3";
+  } else if (origExt === ".wav") {
+    codec = "pcm_s16le"; // raw PCM in WAV container
+    finalExt = ".wav";
+  } else if (origExt === ".flac") {
+    // convert lossless FLAC to MP3 by default to achieve smaller output
+    codec = "libmp3lame";
+    finalExt = ".mp3";
+  } else if (origExt === ".ogg" || origExt === ".opus") {
+    codec = "libopus";
+    finalExt = origExt;
+  } else if (origExt === ".m4a" || origExt === ".aac") {
+    codec = "aac";
+    finalExt = origExt;
+  }
+
+  // build output path using finalExt and avoid collisions
+  let outPath = p.replace(/(\.[^.]+)$/, `_compressed${finalExt}`);
+  let count = 1;
+  while (fs.existsSync(outPath)) {
+    outPath = p.replace(/(\.[^.]+)$/, `_compressed-${count}${finalExt}`);
+    count++;
+  }
+
+  // expose outPath for live stat'ing
+  if (!fileStates[p]) fileStates[p] = {};
+  fileStates[p].outPath = outPath;
+
+  // get duration to compute bitrate
+  const getMetadata = (src) =>
+    new Promise((res, rej) =>
+      ffmpeg.ffprobe(src, (err, meta) => (err ? rej(err) : res(meta)))
+    );
+  let duration = 0;
+  try {
+    const meta = await getMetadata(p);
+    duration = Math.max(1, Math.floor(meta.format.duration || 1));
+  } catch (e) {
+    duration = 1; // fallback to avoid divide-by-zero
+  }
+
+  // target kbps for the entire file, allocated to audio (since it's audio-only)
+  const targetBytes = Math.max(1024 * 10, Math.round(targetMB * 1024 * 1024));
+  const totalTargetKbps = Math.max(
+    8,
+    Math.round((targetBytes * 8) / duration / 1000)
+  );
+
+  // final audio bitrate (kbps)
+  const audioBitrateKbps = Math.max(16, Math.round(totalTargetKbps));
+
+  return new Promise((resolve, reject) => {
+    let cmd = ffmpeg(p);
+    if (!fileStates[p]) fileStates[p] = {};
+    fileStates[p].cmd = cmd;
+    fileStates[p].status = "processing";
+    if (onProgress) onProgress(0, "processing", outPath);
+
+    // apply codec and bitrate options where appropriate
+    if (codec === "libmp3lame") {
+      cmd = cmd.audioCodec("libmp3lame").audioBitrate(`${audioBitrateKbps}k`);
+    } else if (codec === "pcm_s16le") {
+      // WAV PCM: set sample rate to control filesize indirectly
+      cmd = cmd.audioCodec("pcm_s16le").outputOptions([`-ar 44100`]);
+    } else if (codec === "flac") {
+      cmd = cmd.audioCodec("flac");
+    } else if (codec === "libopus") {
+      cmd = cmd.audioCodec("libopus").audioBitrate(`${audioBitrateKbps}k`);
+    } else {
+      // default to AAC
+      cmd = cmd.audioCodec("aac").audioBitrate(`${audioBitrateKbps}k`);
+    }
+    // set an explicit output format for known containers
+    if (origExt === ".m4a" || origExt === ".aac") cmd = cmd.format("mp4");
+    // when converting to MP3 ensure output format is explicitly set
+    if (finalExt === ".mp3") {
+      try {
+        cmd = cmd.format("mp3");
+      } catch (e) {}
+    }
+
+    // debug log chosen codec and bitrate
+    try {
+      if (window && window.electronAPI && window.electronAPI.log)
+        window.electronAPI.log(
+          "compressAudio: codec=",
+          codec,
+          "bitrate=",
+          audioBitrateKbps,
+          "out=",
+          outPath
+        );
+      else
+        console.debug(
+          "compressAudio: codec=",
+          codec,
+          "bitrate=",
+          audioBitrateKbps,
+          "out=",
+          outPath
+        );
+    } catch (e) {}
+
+    // Always strip non-audio streams: map only the primary audio stream
+    try {
+      cmd = cmd.noVideo().outputOptions(["-map", "0:a:0"]);
+    } catch (e) {
+      cmd = cmd.outputOptions(["-map", "0:a:0"]);
+    }
+
+    cmd = cmd
+      .outputOptions(["-movflags +faststart"])
+      .on("progress", (pr) => {
+        const pct = Math.min(
+          99,
+          Math.round(pr.percent || (pr.timemark ? 50 : 0))
+        );
+        if (onProgress) onProgress(pct, "processing");
+      })
+      .on("end", () => {
+        if (fileStates[p]) fileStates[p].cmd = null;
+        if (fileStates[p] && fileStates[p].cancelRequested) {
+          try {
+            if (fs.existsSync(outPath)) fs.unlinkSync(outPath);
+            if (fileStates[p]) fileStates[p].outPath = null;
+          } catch (e) {}
+          if (onProgress) onProgress(0, "cancelled");
+          return resolve(null);
+        }
+        if (!fileStates[p]) fileStates[p] = {};
+        fileStates[p].lastOut = outPath;
+        if (onProgress) onProgress(100, "done", outPath);
+        resolve(outPath);
+      })
+      .on("error", (err, stdout, stderr) => {
+        try {
+          if (fs.existsSync(outPath)) fs.unlinkSync(outPath);
+          if (fileStates[p]) fileStates[p].outPath = null;
+        } catch (e) {}
+        if (fileStates[p]) fileStates[p].cmd = null;
+        try {
+          console.error(
+            "ffmpeg audio error:",
+            err && err.message,
+            stderr || stdout || err
+          );
+        } catch (e) {}
+        const msg =
+          (err && err.message ? err.message : String(err)) +
+          "\n" +
+          (stderr || stdout || "");
+        reject(new Error(msg));
+      })
+      .save(outPath);
+  });
+}
 // GIF support removed: no animated conversion function
 
 // Generate a thumbnail for a video by extracting a single frame.
@@ -1668,6 +1907,11 @@ async function generateVideoThumbnail(videoPath, opts = {}) {
 // Smooth animation loop to ease progress bars to their target values
 (() => {
   let last = performance.now();
+  // throttle sending updates to main process (ms)
+  const TASKBAR_SEND_THROTTLE = 200;
+  let lastTaskbarSend = 0;
+  let lastTaskbarValue = null; // null means not set yet
+
   function tick(now) {
     const dt = Math.min(100, now - last) / 1000; // seconds, cap to avoid big jumps
     last = now;
@@ -1708,6 +1952,82 @@ async function generateVideoThumbnail(videoPath, opts = {}) {
         }
       } catch (e) {}
     }
+
+    // Compute aggregate progress and send to main process (throttled)
+    try {
+      const fs = require("fs");
+      let totalWeight = 0;
+      let weightedSum = 0;
+      let anyActive = false;
+      // use files array ordering/weights when available to keep values stable
+      const keys = Object.keys(fileStates).length
+        ? Object.keys(fileStates)
+        : files.slice();
+      for (const p of keys) {
+        try {
+          const s = fileStates[p];
+          if (!s) continue;
+          // consider queued or processing files as active; also include any with progress > 0 and < 100
+          const active =
+            s.status === "processing" ||
+            s.status === "queued" ||
+            (typeof s.progress === "number" &&
+              s.progress > 0 &&
+              s.progress < 100);
+          if (active) anyActive = true;
+          // weight by original file size when possible, fallback to 1
+          let weight = 1;
+          try {
+            const st = fs.statSync(p);
+            weight = st && st.size ? st.size : 1;
+          } catch (e) {
+            weight = 1;
+          }
+          const disp =
+            typeof s.displayedProgress === "number" ? s.displayedProgress : 0;
+          weightedSum += disp * weight;
+          totalWeight += weight;
+        } catch (e) {}
+      }
+      let overallPct = 0;
+      if (totalWeight > 0) overallPct = weightedSum / totalWeight; // 0..100
+      else {
+        // fallback: average displayedProgress across any states
+        let sum = 0;
+        let count = 0;
+        for (const p of Object.keys(fileStates)) {
+          const s = fileStates[p];
+          if (!s) continue;
+          sum +=
+            typeof s.displayedProgress === "number" ? s.displayedProgress : 0;
+          count++;
+        }
+        overallPct = count ? sum / count : 0;
+      }
+      const newValue = anyActive
+        ? Math.max(0, Math.min(1, overallPct / 100))
+        : -1;
+      const nowMs = Date.now();
+      const changed =
+        lastTaskbarValue === null ||
+        Math.abs((lastTaskbarValue || 0) - newValue) > 0.005;
+      if (
+        (nowMs - lastTaskbarSend > TASKBAR_SEND_THROTTLE && changed) ||
+        (newValue === -1 && lastTaskbarValue !== -1)
+      ) {
+        try {
+          const { ipcRenderer } = require("electron");
+          if (ipcRenderer && typeof ipcRenderer.send === "function") {
+            ipcRenderer.send("set-taskbar-progress", newValue);
+            lastTaskbarSend = nowMs;
+            lastTaskbarValue = newValue;
+          }
+        } catch (e) {
+          // ignore send failures
+        }
+      }
+    } catch (e) {}
+
     requestAnimationFrame(tick);
   }
   requestAnimationFrame(tick);
