@@ -29,6 +29,9 @@ function createWindow() {
     icon: path.join(__dirname, "compressly.png"),
     autoHideMenuBar: true,
     backgroundColor: "#f6f8fa",
+    // Use a frameless window so we can draw a custom titlebar that blends
+    // with the app UI. We'll implement native window controls via IPC.
+    frame: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       // Allow renderer require() and built-in modules for this local app.
@@ -45,6 +48,20 @@ function createWindow() {
   win.once("ready-to-show", () => {
     win.show();
   });
+
+  // Forward maximize/unmaximize events to renderer so it can update UI
+  try {
+    win.on("maximize", () => {
+      try {
+        win.webContents.send("window-maximized");
+      } catch (e) {}
+    });
+    win.on("unmaximize", () => {
+      try {
+        win.webContents.send("window-unmaximized");
+      } catch (e) {}
+    });
+  } catch (e) {}
 }
 
 app.whenReady().then(() => {
@@ -130,6 +147,34 @@ ipcMain.on("minimize-and-close", (event, delayMs = 3000) => {
   } catch (e) {
     console.warn("minimize-and-close failed", e);
   }
+});
+
+// Window control IPC for custom titlebar buttons
+ipcMain.on("window-minimize", (event) => {
+  try {
+    const win =
+      BrowserWindow.fromWebContents(event.sender) ||
+      BrowserWindow.getFocusedWindow();
+    if (win) win.minimize();
+  } catch (e) {}
+});
+ipcMain.on("window-close", (event) => {
+  try {
+    const win =
+      BrowserWindow.fromWebContents(event.sender) ||
+      BrowserWindow.getFocusedWindow();
+    if (win) win.close();
+  } catch (e) {}
+});
+ipcMain.on("window-toggle-maximize", (event) => {
+  try {
+    const win =
+      BrowserWindow.fromWebContents(event.sender) ||
+      BrowserWindow.getFocusedWindow();
+    if (!win) return;
+    if (win.isMaximized()) win.unmaximize();
+    else win.maximize();
+  } catch (e) {}
 });
 
 // Run an installer executable (path provided by renderer) detached and then quit the app

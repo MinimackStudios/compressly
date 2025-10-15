@@ -99,12 +99,87 @@ body {
   align-items: flex-start;
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
+
+/* Custom frameless titlebar */
+.titlebar {
+  -webkit-app-region: drag; /* make the whole titlebar draggable */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  height: 36px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.02),
+    rgba(255, 255, 255, 0.01)
+  );
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  z-index: 9998;
+}
+.titlebar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.titlebar-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+}
+.titlebar-title {
+  font-weight: 700;
+  font-size: 13px;
+  background: linear-gradient(90deg, #4f46e5, #9151ff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.titlebar-center {
+  flex: 1;
+}
+.titlebar-right {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.win-btn {
+  -webkit-app-region: no-drag; /* buttons must be clickable */
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  width: 36px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.win-btn:hover {
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+}
+.win-btn.close {
+  color: #ff6b6b;
+}
+.win-btn.close:hover {
+  background: rgba(255, 100, 100, 0.12);
+}
+
+/* Keep titlebar looking good when in dark mode */
+body.dark .titlebar {
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+body.dark .win-btn {
+  color: var(--muted);
+}
 .brand {
   font-size: 22px;
   font-weight: 700;
   color: var(--accent);
-  /* gradient text */
-  background: linear-gradient(90deg, #4f46e5, #ba39ff);
+  background: linear-gradient(90deg, #4f46e5, #ff39fd);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;

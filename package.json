@@ -1,6 +1,6 @@
 {
   "name": "video-image-compressor",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Electron app to compress videos and images under 10 MB",
   "main": "src/main.js",
   "scripts": {
@@ -8,7 +8,7 @@
     "build": "electron-builder"
   },
   "private": true,
-  "author": "",
+  "author": "Minimack Studios",
   "license": "MIT",
   "devDependencies": {
     "electron": "^26.0.0",

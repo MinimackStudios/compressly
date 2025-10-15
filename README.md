@@ -7,11 +7,7 @@ images & audio, fewer still that work entirely offline, and even fewer
 that don't have some sort of file size limit and/or lock features
 behind a paywall.
 
-So I decided: Why not make my own? With little to no
-coding experience, I used GitHub Copilot to help bring it to
-life, prompting, refining, and troubleshooting until it matched my
-vision. Compressly is the result of persistence, curiosity, and
-creative direction.
+So I decided: Why not make my own? With little to no coding experience, I used GitHub Copilot to make it a reality, prompting, refining, and troubleshooting until it matched how I wanted it to be. Compressly is the result of persistence, curiosity, and creative direction.
 
 ## Getting Started
 

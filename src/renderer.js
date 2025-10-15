@@ -9,6 +9,29 @@ const targetResolutionEl = document.getElementById("targetResolution");
 const footerInfoEl = document.getElementById("footer-info");
 const clearBtn = document.getElementById("clearList");
 
+// Window control buttons for custom titlebar (only present in frameless mode)
+const winMinBtn = document.getElementById("win-min");
+const winMaxBtn = document.getElementById("win-max");
+const winCloseBtn = document.getElementById("win-close");
+
+try {
+  const { ipcRenderer } = require("electron");
+  if (winMinBtn)
+    winMinBtn.addEventListener("click", () =>
+      ipcRenderer.send("window-minimize")
+    );
+  if (winCloseBtn)
+    winCloseBtn.addEventListener("click", () =>
+      ipcRenderer.send("window-close")
+    );
+  if (winMaxBtn)
+    winMaxBtn.addEventListener("click", () =>
+      ipcRenderer.send("window-toggle-maximize")
+    );
+
+  // Keep maximize button appearance constant (do not change icon on maximize)
+} catch (e) {}
+
 // Ensure update download always works: centralized download function and click handler
 async function downloadLatestReleaseFromGitHub() {
   const downloadBtn = document.getElementById("updateDownloadBtn");
