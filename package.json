@@ -1,7 +1,7 @@
 {
-  "name": "video-image-compressor",
-  "version": "1.0.7",
-  "description": "Electron app to compress videos and images under 10 MB",
+  "name": "compressly",
+  "version": "1.1.0",
+  "description": "Electron app to compress videos, images & audio",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
@@ -34,6 +34,15 @@
     "win": {
       "target": ["nsis"],
       "icon": "src/compressly.ico"
+    },
+    "mac": {
+      "icon": "src/compressly.icns",
+      "target": [
+        { "target": "dmg", "arch": ["x64"] }
+      ]
+    },
+    "dmg": {
+      "icon": null
     },
     "nsis": {
       "oneClick": false,

@@ -32,6 +32,126 @@ try {
   // Keep maximize button appearance constant (do not change icon on maximize)
 } catch (e) {}
 
+// Handle lite-mode toggle sent from main process (via menu)
+try {
+  const { ipcRenderer } = require('electron');
+  ipcRenderer.on('lite-mode', (ev, enabled) => {
+    try {
+      const on = !!enabled;
+      if (on) document.body.classList.add('lite-mode');
+      else document.body.classList.remove('lite-mode');
+      try {
+        localStorage.setItem('liteMode', on ? '1' : '0');
+      } catch (e) {}
+    } catch (e) {}
+  });
+} catch (e) {}
+
+// Apply persisted lite-mode on startup (renderer fallback if main didn't send yet)
+try {
+  const persisted = localStorage.getItem('liteMode');
+  if (persisted === '1') document.body.classList.add('lite-mode');
+  else if (persisted === '0') document.body.classList.remove('lite-mode');
+} catch (e) {}
+
+// Wire up the in-app Lite button (if present)
+try {
+  const liteBtn = document.getElementById('liteBtn');
+  if (liteBtn) {
+    const updateLiteLabel = (on) => {
+      try {
+        liteBtn.textContent = on ? 'Lite: On' : 'Lite: Off';
+        liteBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      } catch (e) {}
+    };
+
+    // initialize label from current state
+    try {
+      const initial = document.body.classList.contains('lite-mode') || localStorage.getItem('liteMode') === '1';
+      updateLiteLabel(!!initial);
+    } catch (e) {}
+
+    liteBtn.addEventListener('click', () => {
+      try {
+        const on = !document.body.classList.contains('lite-mode');
+        if (on) document.body.classList.add('lite-mode');
+        else document.body.classList.remove('lite-mode');
+        try { localStorage.setItem('liteMode', on ? '1' : '0'); } catch (e) {}
+        try { require('electron').ipcRenderer.send('set-lite-mode', on); } catch (e) {}
+        updateLiteLabel(on);
+      } catch (e) {}
+    });
+  }
+} catch (e) {}
+
+// Dev-only: print resolved ffmpeg path at startup to help debugging.
+(async function devLogFfmpegPath() {
+  try {
+    if (window.electronAPI && window.electronAPI.isDev && window.electronAPI.getFfmpegPath) {
+      const p = await window.electronAPI.getFfmpegPath();
+      console.log("[DEV] resolved ffmpeg path:", p);
+    }
+  } catch (e) {}
+})();
+
+// Helper: choose the best release asset for this platform (case-insensitive)
+function selectReleaseAsset(assets) {
+  try {
+    if (!Array.isArray(assets) || assets.length === 0) return null;
+    const platform = (window && window.electronAPI && window.electronAPI.platform) || (typeof process !== 'undefined' ? process.platform : '');
+    const list = assets.slice();
+    // Normalize name checks to lowercase for robust matching
+    const norm = (a) => ({ ...a, lname: (a && a.name ? String(a.name).toLowerCase() : ''), url: a && a.browser_download_url });
+    const normalized = list.map(norm);
+
+    if (platform === 'darwin') {
+      // prefer .dmg, then .pkg, then .zip
+      let a = normalized.find(x => x.lname.endsWith('.dmg'));
+      if (a) return a;
+      a = normalized.find(x => x.lname.endsWith('.pkg'));
+      if (a) return a;
+      a = normalized.find(x => x.lname.endsWith('.zip'));
+      if (a) return a;
+      // try substring matches like 'mac' or 'osx'
+      a = normalized.find(x => x.lname.includes('mac') || x.lname.includes('osx'));
+      if (a) return a;
+    } else if (platform === 'win32') {
+      let a = normalized.find(x => x.lname.endsWith('.exe'));
+      if (a) return a;
+      a = normalized.find(x => x.lname.endsWith('.msi'));
+      if (a) return a;
+      a = normalized.find(x => x.lname.endsWith('.zip'));
+      if (a) return a;
+    } else {
+      // linux/other
+      let a = normalized.find(x => x.lname.endsWith('.appimage'));
+      if (a) return a;
+      a = normalized.find(x => x.lname.endsWith('.deb'));
+      if (a) return a;
+      a = normalized.find(x => x.lname.endsWith('.tar.gz') || x.lname.endsWith('.tgz'));
+      if (a) return a;
+      a = normalized.find(x => x.lname.endsWith('.zip'));
+      if (a) return a;
+    }
+
+    // As a last attempt, prefer assets that include the platform name anywhere
+    const pf = platform ? String(platform).toLowerCase() : '';
+    if (pf) {
+      const match = normalized.find(x => x.lname.includes(pf));
+      if (match) return match;
+    }
+
+    // Fallback: prefer any asset that looks like a mac/linux/windows binary by extension
+    const fallback = normalized.find(x => x.lname.match(/\.dmg$|\.pkg$|\.zip$|\.exe$|\.msi$|\.deb$|\.tar\.gz$|\.appimage$|\.AppImage$/i));
+    if (fallback) return fallback;
+
+    // Final fallback: first asset
+    return normalized[0] || null;
+  } catch (e) {
+    return null;
+  }
+}
+
 // Ensure update download always works: centralized download function and click handler
 async function downloadLatestReleaseFromGitHub() {
   const downloadBtn = document.getElementById("updateDownloadBtn");
@@ -67,10 +187,11 @@ async function downloadLatestReleaseFromGitHub() {
       } catch (e) {}
       return;
     }
-    const asset = assets[0];
-    const assetUrl = asset.browser_download_url;
-    const defaultName =
-      asset.name || `compressly-${(d.tag_name || "").replace(/^v/i, "")}.zip`;
+  // Prefer platform-appropriate asset (on mac prefer .pkg). Fall back to first asset.
+    const picked = selectReleaseAsset(assets);
+    let asset = picked || (assets && assets[0]) || null;
+    const assetUrl = asset && asset.browser_download_url;
+    const defaultName = asset && (asset.name || `compressly-${(d.tag_name || "").replace(/^v/i, "")}.zip`);
     if (!assetUrl) {
       try {
         if (statusEl)
@@ -265,9 +386,6 @@ try {
 
       const CACHE_KEY = "compressly_update_lastChecked";
       const now = Date.now();
-      const lastChecked =
-        parseInt(localStorage.getItem(CACHE_KEY) || "0", 10) || 0;
-      const twelveHours = 12 * 60 * 60 * 1000;
 
       let latestTag =
         localStorage.getItem("compressly_update_latestTag") || null;
@@ -365,9 +483,11 @@ try {
                 openExternal();
                 return;
               }
-              const asset = assets[0];
-              const assetUrl = asset.browser_download_url;
-              const defaultName = asset.name || `compressly-${latestTag}.zip`;
+              // Select platform-appropriate asset using helper
+              const picked = selectReleaseAsset(assets);
+              const asset = picked || (assets && assets[0]) || null;
+              const assetUrl = asset && asset.browser_download_url;
+              const defaultName = asset && (asset.name || `compressly-${latestTag}.zip`);
               if (!assetUrl) {
                 downloadBtn.classList.remove("loading");
                 downloadBtn.disabled = false;
@@ -561,65 +681,33 @@ function resolveBinaryPath(maybeObjOrPath) {
   }
 }
 
-// Estimate compressed size: images -> min(orig, target), videos -> compute bitrates similarly to compressVideo
-async function estimateCompressedMB(filePath) {
+async function getFfmpegPath() {
   try {
-    const ext = path.extname(filePath).toLowerCase();
-    const st = fs.statSync(filePath);
-    const origMB = st.size / 1024 / 1024;
-    if (IMAGE_EXTS.includes(ext)) {
-      // image heuristic: if already smaller, keep original; otherwise assume we'll reach close to target minus small overhead
-      const targetMB = parseFloat(targetSizeEl.value || "10");
-      if (origMB <= targetMB) return origMB;
-      // assume encoder/headers take ~5% overhead
-      return Math.max(0.01, Math.min(origMB, targetMB * 0.95));
+    if (window.electronAPI && window.electronAPI.getFfmpegPath) {
+      const p = await window.electronAPI.getFfmpegPath();
+      if (p) return p;
     }
-    if (VIDEO_EXTS.includes(ext)) {
-      // use ffprobe to get duration and audio bitrate
-      const ffmpeg = require("fluent-ffmpeg");
-      const ffmpegPath = require("ffmpeg-static");
-      try {
-        ffmpeg.setFfmpegPath(resolveBinaryPath(ffmpegPath.path || ffmpegPath));
-      } catch (e) {
-        ffmpeg.setFfmpegPath(ffmpegPath.path || ffmpegPath);
-      }
-      const meta = await new Promise((res, rej) =>
-        ffmpeg.ffprobe(filePath, (err, m) => (err ? rej(err) : res(m)))
-      );
-      const duration = meta.format.duration || 10;
-      const audioStream = (meta.streams || []).find(
-        (s) => s.codec_type === "audio"
-      );
-      // use kbps as float for more precise math
-      const audioBitrate =
-        audioStream && audioStream.bit_rate ? audioStream.bit_rate / 1000 : 128;
-      const priority = prioritySelectEl
-        ? prioritySelectEl.value || "balanced"
-        : "balanced";
-      let adjAudioBitrate = audioBitrate;
-      if (priority === "video")
-        adjAudioBitrate = Math.max(64, audioBitrate * 0.6);
-      else if (priority === "audio")
-        adjAudioBitrate = Math.max(128, audioBitrate * 1.4);
-      const targetMB = parseFloat(targetSizeEl.value || "10");
-      const targetBytes = targetMB * 1024 * 1024;
-      // compute float kbps precisely and clamp
-      let videoKbps =
-        ((targetBytes * 8) / duration - adjAudioBitrate * 1000) / 1000; // kbps (float)
-      if (!isFinite(videoKbps) || videoKbps <= 0) videoKbps = 200;
-      videoKbps = Math.max(200, videoKbps);
-      // estimate bytes from (video + audio) kbps over duration; add small container overhead (~1%)
-      const estBytes =
-        (((videoKbps + adjAudioBitrate) * 1000) / 8) * duration * 1.01;
-      const estMB = Math.max(Math.min(estBytes / 1024 / 1024, origMB), 0.01);
-      return estMB;
-    }
-    return origMB;
-  } catch (e) {
-    return null;
-  }
+  } catch (e) {}
+  try {
+    const ffmpegStatic = require("ffmpeg-static");
+    return ffmpegStatic && (ffmpegStatic.path || ffmpegStatic);
+  } catch (e) {}
+  return "ffmpeg";
 }
 
+async function getFfprobePath() {
+  try {
+    if (window.electronAPI && window.electronAPI.getFfprobePath) {
+      const p = await window.electronAPI.getFfprobePath();
+      if (p) return p;
+    }
+  } catch (e) {}
+  try {
+    const ffprobeStatic = require("ffprobe-static");
+    return ffprobeStatic && (ffprobeStatic.path || ffprobeStatic);
+  } catch (e) {}
+  return "ffprobe";
+}
 // Allowed extensions for drag/drop and basic type checks
 const IMAGE_EXTS = [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tiff"];
 const VIDEO_EXTS = [".mp4", ".mov", ".mkv", ".avi", ".webm", ".flv", ".wmv"];
@@ -634,10 +722,28 @@ function applyTheme(dark) {
     localStorage.setItem("themeDark", dark ? "1" : "0");
   } catch (e) {}
   if (themeToggle) themeToggle.checked = !!dark;
+  // Inform main process to switch native theme (so mac titlebar matches app)
+  try {
+    if (window.electronAPI && typeof window.electronAPI.setAppTheme === "function") {
+      const t = dark ? "dark" : "light";
+      // don't await (fire-and-forget), but catch errors
+      window.electronAPI.setAppTheme(t).catch(() => {});
+    }
+  } catch (e) {}
 }
 try {
   const prev = localStorage.getItem("themeDark");
   applyTheme(prev === "1");
+} catch (e) {}
+// Also sync the native theme on startup (if the preload exposes setAppTheme)
+try {
+  const prev = localStorage.getItem("themeDark");
+  if (typeof prev !== "undefined" && window.electronAPI && typeof window.electronAPI.setAppTheme === "function") {
+    try {
+      const t = prev === "1" ? "dark" : "light";
+      window.electronAPI.setAppTheme(t).catch(() => {});
+    } catch (e) {}
+  }
 } catch (e) {}
 if (themeToggle) {
   themeToggle.addEventListener("change", (e) => applyTheme(e.target.checked));
@@ -658,13 +764,6 @@ setTimeout(() => {
   } catch (e) {}
 }, 120);
 
-function formatBytes(bytes) {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
-}
 
 pickBtn.addEventListener("click", async () => {
   try {
@@ -853,39 +952,48 @@ if (dropArea) {
   }
 
   // About modal handlers
-  if (aboutBtn && aboutModal) {
-    aboutBtn.addEventListener("click", async () => {
+  if (aboutModal) {
+    // central show function so menu IPC can reuse the same behavior
+    async function showAboutModal() {
       try {
         // read package.json for version and deps
         const pj = require("../package.json");
-        aboutVersion.textContent = pj.version || "?";
-        aboutAuthor.textContent = "Minimack Studios";
-        aboutRuntime.textContent = `${process.platform} • Node ${process.versions.node} • Electron ${process.versions.electron}`;
-        aboutDeps.textContent =
-          "Dependencies: " + Object.keys(pj.dependencies || {}).join(", ");
+        if (aboutVersion) aboutVersion.textContent = pj.version || "?";
+        if (aboutAuthor) aboutAuthor.textContent = "Minimack Studios";
+        if (aboutRuntime) aboutRuntime.textContent = `${process.platform} • Node ${process.versions.node} • Electron ${process.versions.electron}`;
+        if (aboutDeps) aboutDeps.textContent = "Dependencies: " + Object.keys(pj.dependencies || {}).join(", ");
       } catch (e) {
-        aboutVersion.textContent = "?";
+        try { if (aboutVersion) aboutVersion.textContent = "?"; } catch (e) {}
       }
-      // animate in by toggling a visible class
-      aboutModal.classList.add("visible");
-    });
+      try { aboutModal.classList.add("visible"); } catch (e) {}
+    }
+
+    if (aboutBtn) {
+      aboutBtn.addEventListener("click", () => showAboutModal());
+    }
+
     // Close handlers: button, clicking overlay background, and ESC key
-    aboutClose.addEventListener("click", () => {
-      aboutModal.classList.remove("visible");
-    });
-    // clicking outside the modal closes it
-    aboutModal.addEventListener("click", (ev) => {
-      if (ev.target === aboutModal) aboutModal.classList.remove("visible");
-    });
+    try { if (aboutClose) aboutClose.addEventListener("click", () => { aboutModal.classList.remove("visible"); }); } catch (e) {}
+    try { aboutModal.addEventListener("click", (ev) => { if (ev.target === aboutModal) aboutModal.classList.remove("visible"); }); } catch (e) {}
     // ESC key closes modal(s)
-    window.addEventListener("keydown", (ev) => {
+    try { window.addEventListener("keydown", (ev) => {
       if (ev.key === "Escape") {
-        aboutModal.classList.remove("visible");
-        if (ffmpegModal) ffmpegModal.classList.remove("visible");
-        if (updateModal) updateModal.classList.remove("visible");
-        if (longVideoModal) longVideoModal.classList.remove("visible");
+        try { aboutModal.classList.remove("visible"); } catch (e) {}
+        try { if (ffmpegModal) ffmpegModal.classList.remove("visible"); } catch (e) {}
+        try { if (updateModal) updateModal.classList.remove("visible"); } catch (e) {}
+        try { if (longVideoModal) longVideoModal.classList.remove("visible"); } catch (e) {}
       }
-    });
+    }); } catch (e) {}
+
+    // Listen for menu-triggered About requests from main process
+    try {
+      const { ipcRenderer } = require('electron');
+      if (ipcRenderer && typeof ipcRenderer.on === 'function') {
+        ipcRenderer.on('open-about-modal', () => {
+          try { showAboutModal(); } catch (e) {}
+        });
+      }
+    } catch (e) {}
   }
   // long video modal handlers
   try {
@@ -919,7 +1027,6 @@ if (dropArea) {
         } catch (e) {}
       }
       const totalMB = (total / 1024 / 1024).toFixed(2);
-      const targetMB = parseFloat(targetSizeEl.value || "10");
       footerInfoEl.textContent = `${files.length} file(s) • ${totalMB} MB total`;
       // compute compressed total from outputs (live): prefer outPath while processing, fallback to lastOut
       let compressedTotal = 0;
@@ -1081,7 +1188,7 @@ function renderList() {
     // Thumbnail click behavior: open original before compression; open compressed after
     try {
       img.style.cursor = "pointer";
-      img.addEventListener("click", (ev) => {
+      img.addEventListener("click", () => {
         try {
           const { shell } = require("electron");
           const fs = require("fs");
@@ -1267,13 +1374,22 @@ startBtn.addEventListener("click", async () => {
   if (files.length === 0) return alert("No files selected");
   statusEl.textContent = "Compressing...";
   startBtn.disabled = true;
+  // clear any previous cancellation state for a fresh run
+  anyCancelled = false;
   let firstOutDir = null;
   let firstOutPath = null;
   for (const p of files.slice()) {
     // use copy since files can be removed
     try {
-      // mark this file as queued so the UI enables cancel immediately
-      if (!fileStates[p]) fileStates[p] = {};
+  // mark this file as queued so the UI enables cancel immediately
+  if (!fileStates[p]) fileStates[p] = {};
+  // clear any previous cancel request for this file so a fresh run proceeds
+  fileStates[p].cancelRequested = false;
+      // If a video thumbnail is still generating, wait for it to finish before queuing/compressing
+      if (fileStates[p].thumbGenerating) {
+        // wait up to 15s for thumbnail generation to complete
+        await waitForThumb(p, 15000);
+      }
       fileStates[p].status = "queued";
       renderList();
       const result = await compressFile(p, (progress, status, outPath) => {
@@ -1310,6 +1426,21 @@ startBtn.addEventListener("click", async () => {
   // or the compressed file (after compress)
   anyCancelled = false;
 });
+
+// Helper: wait until a file's thumbnail generation flag clears (no timeout)
+function waitForThumb(p) {
+  return new Promise((resolve) => {
+    const check = () => {
+      try {
+        if (!fileStates[p] || !fileStates[p].thumbGenerating) return resolve(true);
+      } catch (e) {
+        return resolve(false);
+      }
+      setTimeout(check, 120);
+    };
+    check();
+  });
+}
 
 async function compressFile(p, onProgress) {
   const buffer = await window.electronAPI.readFile(p);
@@ -1488,17 +1619,19 @@ async function compressImage(p, buffer, ft, targetMB, onProgress) {
 }
 
 async function compressVideo(p, targetMB, onProgress, opts = {}) {
-  const ffmpegPath = require("ffmpeg-static");
+  const ffmpegPath = await getFfmpegPath();
   const ffmpeg = require("fluent-ffmpeg");
   try {
-    ffmpeg.setFfmpegPath(resolveBinaryPath(ffmpegPath.path || ffmpegPath));
+    ffmpeg.setFfmpegPath(resolveBinaryPath(ffmpegPath));
+    try {
+      const ffprobePath = await getFfprobePath();
+      if (ffprobePath) ffmpeg.setFfprobePath(resolveBinaryPath(ffprobePath));
+    } catch (e) {}
   } catch (e) {
-    ffmpeg.setFfmpegPath(ffmpegPath.path || ffmpegPath);
+    ffmpeg.setFfmpegPath(ffmpegPath);
   }
 
   const { promisify } = require("util");
-  const tmp = require("os").tmpdir();
-  const path = require("path");
   const fs = require("fs");
   let outPath = p.replace(/(\.[^.]+)$/, "_compressed.mp4");
   let count = 1;
@@ -1650,12 +1783,32 @@ async function compressVideo(p, targetMB, onProgress, opts = {}) {
       .videoFilters(vf)
       .outputOptions(outOpts)
       .on("progress", (p) => {
-        window.electronAPI.log("ffmpeg progress", p);
-        // p.percent is not always present; approximate
-        const percent = Math.min(
-          99,
-          Math.round(p.percent || (p.timemark ? 50 : 0))
-        );
+        try {
+          window.electronAPI.log("ffmpeg progress", p);
+        } catch (e) {}
+        // Prefer explicit percent; if absent but timemark present, compute from duration
+        let percent = 0;
+        if (typeof p.percent === "number") {
+          percent = Math.min(99, Math.round(p.percent));
+        } else if (p.timemark) {
+          // parse timemark (HH:MM:SS[.xx]) into seconds
+          try {
+            const parts = String(p.timemark).split(":").map(parseFloat);
+            let secs = 0;
+            if (parts.length === 3) secs = parts[0] * 3600 + parts[1] * 60 + parts[2];
+            else if (parts.length === 2) secs = parts[0] * 60 + parts[1];
+            else secs = parts[0] || 0;
+            if (duration && isFinite(secs)) {
+              percent = Math.min(99, Math.round((secs / Math.max(1, duration)) * 100));
+            } else {
+              percent = 0;
+            }
+          } catch (e) {
+            percent = 0;
+          }
+        } else {
+          percent = 0;
+        }
         if (onProgress) onProgress(percent, "processing");
       })
       .on("end", () => {
@@ -1694,12 +1847,16 @@ async function compressVideo(p, targetMB, onProgress, opts = {}) {
 
 // Compress audio files by re-encoding at a target average bitrate derived from targetMB
 async function compressAudio(p, targetMB, onProgress, opts = {}) {
-  const ffmpegPath = require("ffmpeg-static");
+  const ffmpegPath = await getFfmpegPath();
   const ffmpeg = require("fluent-ffmpeg");
   try {
-    ffmpeg.setFfmpegPath(resolveBinaryPath(ffmpegPath.path || ffmpegPath));
+    ffmpeg.setFfmpegPath(resolveBinaryPath(ffmpegPath));
+    try {
+      const ffprobePath = await getFfprobePath();
+      if (ffprobePath) ffmpeg.setFfprobePath(resolveBinaryPath(ffprobePath));
+    } catch (e) {}
   } catch (e) {
-    ffmpeg.setFfmpegPath(ffmpegPath.path || ffmpegPath);
+    ffmpeg.setFfmpegPath(ffmpegPath);
   }
 
   const path = require("path");
@@ -1826,10 +1983,23 @@ async function compressAudio(p, targetMB, onProgress, opts = {}) {
     cmd = cmd
       .outputOptions(["-movflags +faststart"])
       .on("progress", (pr) => {
-        const pct = Math.min(
-          99,
-          Math.round(pr.percent || (pr.timemark ? 50 : 0))
-        );
+        let pct = 0;
+        if (typeof pr.percent === "number") {
+          pct = Math.min(99, Math.round(pr.percent));
+        } else if (pr.timemark) {
+          try {
+            const parts = String(pr.timemark).split(":").map(parseFloat);
+            let secs = 0;
+            if (parts.length === 3) secs = parts[0] * 3600 + parts[1] * 60 + parts[2];
+            else if (parts.length === 2) secs = parts[0] * 60 + parts[1];
+            else secs = parts[0] || 0;
+            if (duration && isFinite(secs)) {
+              pct = Math.min(99, Math.round((secs / Math.max(1, duration)) * 100));
+            } else pct = 0;
+          } catch (e) {
+            pct = 0;
+          }
+        } else pct = 0;
         if (onProgress) onProgress(pct, "processing");
       })
       .on("end", () => {
@@ -1875,12 +2045,12 @@ async function compressAudio(p, targetMB, onProgress, opts = {}) {
 // If opts.middle is true, pick the exact middle frame for deterministic previews.
 async function generateVideoThumbnail(videoPath, opts = {}) {
   try {
-    const ffmpegPath = require("ffmpeg-static");
+    const ffmpegPath = await getFfmpegPath();
     const ffmpeg = require("fluent-ffmpeg");
     try {
-      ffmpeg.setFfmpegPath(resolveBinaryPath(ffmpegPath.path || ffmpegPath));
+      ffmpeg.setFfmpegPath(resolveBinaryPath(ffmpegPath));
     } catch (e) {
-      ffmpeg.setFfmpegPath(ffmpegPath.path || ffmpegPath);
+      ffmpeg.setFfmpegPath(ffmpegPath);
     }
     const { promisify } = require("util");
     const os = require("os");
@@ -2057,95 +2227,173 @@ async function generateVideoThumbnail(videoPath, opts = {}) {
 })();
 
 // --- FFmpeg presence check and modal wiring ---
-try {
-  const { spawnSync } = require("child_process");
-  const res = spawnSync("ffmpeg", ["-version"], { encoding: "utf8" });
-  const ffmpegFound =
-    res.status === 0 || /ffmpeg version/i.test(res.stdout || "");
-  const dontShow = (() => {
-    try {
-      return localStorage.getItem("ffmpegDontShow") === "1";
-    } catch (e) {
-      return false;
-    }
-  })();
+// Use an async check that prefers the app-resolved ffmpeg/ffprobe paths
+(async () => {
+  try {
+    const ffmpegModal = document.getElementById("ffmpegModal");
+    const ffmpegDontShow = document.getElementById("ffmpegDontShow");
+    const ffmpegOk = document.getElementById("ffmpegOk");
 
-  if (!ffmpegFound && ffmpegModal && !dontShow) {
-    // show notice
-    ffmpegModal.classList.add("visible");
-    // default checkbox state
-    try {
-      ffmpegDontShow.checked = false;
-    } catch (e) {}
-  }
+    let ffmpegFound = false;
+    let ffprobeFound = false;
 
-  // open links externally
-  if (ffmpegModal) {
-    document.querySelectorAll(".ffmpeg-link").forEach((a) => {
-      a.addEventListener("click", (ev) => {
-        ev.preventDefault();
+    try {
+      const fp = await getFfmpegPath();
+      if (fp) {
         try {
-          const { shell } = require("electron");
-          const url = a.getAttribute("data-url") || a.href;
-          shell.openExternal(url);
-        } catch (e) {
-          window.open(a.href, "_blank");
-        }
-      });
-    });
-    // copy-to-clipboard for the ffmpeg install command
+          const child = require("child_process");
+          const resolved = resolveBinaryPath(fp) || fp;
+          const r = child.spawnSync(resolved, ["-version"], { encoding: "utf8" });
+          ffmpegFound = !!(r && (r.status === 0 || /ffmpeg version/i.test(r.stdout || "")));
+        } catch (e) {}
+      }
+    } catch (e) {}
+
     try {
-      const copyBtn = document.getElementById("ffmpegCopyBtn");
-      const cmdEl = document.getElementById("ffmpegCmd");
-      if (copyBtn && cmdEl) {
-        copyBtn.addEventListener("click", async () => {
-          const txt = cmdEl.textContent || cmdEl.innerText || "";
-          let ok = false;
-          try {
-            if (
-              navigator &&
-              navigator.clipboard &&
-              navigator.clipboard.writeText
-            ) {
-              await navigator.clipboard.writeText(txt);
-              ok = true;
-            }
-          } catch (e) {}
-          if (!ok) {
+      const pp = await getFfprobePath();
+      if (pp) {
+        try {
+          const child = require("child_process");
+          const resolved = resolveBinaryPath(pp) || pp;
+          const r2 = child.spawnSync(resolved, ["-version"], { encoding: "utf8" });
+          ffprobeFound = !!(r2 && (r2.status === 0 || /ffprobe version/i.test(r2.stdout || "")));
+        } catch (e) {}
+      }
+    } catch (e) {}
+
+    const dontShow = (() => {
+      try {
+        return localStorage.getItem("ffmpegDontShow") === "1";
+      } catch (e) {
+        return false;
+      }
+    })();
+
+    // Only show the modal if either binary is missing and the user hasn't opted out
+    if (!(ffmpegFound && ffprobeFound) && ffmpegModal && !dontShow) {
+      try {
+        const cmdEl = document.getElementById("ffmpegCmd");
+        const ffmpegBtn = document.getElementById("ffmpegBtn");
+        const ffprobeBtn = document.getElementById("ffprobeBtn");
+        const txtEl = document.getElementById("ffmpegInstallText");
+        const platform = (window && window.electronAPI && window.electronAPI.platform) || process.platform;
+        if (platform === "darwin") {
+          if (txtEl) txtEl.textContent = "Please download these 2 FFmpeg binaries for macOS, extract them, and place them in /usr/local/bin:";
+          if (ffmpegBtn) ffmpegBtn.style.display = "inline-block";
+          if (ffprobeBtn) ffprobeBtn.style.display = "inline-block";
+        } else if (platform === "linux") {
+          if (cmdEl) cmdEl.textContent = "sudo apt install ffmpeg";
+          if (txtEl) txtEl.textContent = "Install FFmpeg using your distribution package manager (e.g., apt):";
+          if (ffmpegBtn) ffmpegBtn.style.display = "inline-block";
+          if (ffprobeBtn) ffprobeBtn.style.display = "inline-block";
+        } else {
+          if (cmdEl) cmdEl.textContent = "winget install ffmpeg";
+          if (txtEl) txtEl.textContent = "Install FFmpeg using Windows Package Manager (PowerShell):";
+          if (ffmpegBtn) ffmpegBtn.style.display = "inline-block";
+          if (ffprobeBtn) ffprobeBtn.style.display = "inline-block";
+        }
+      } catch (e) {}
+      try { ffmpegModal.classList.add("visible"); } catch (e) {}
+      try { if (ffmpegDontShow) ffmpegDontShow.checked = false; } catch (e) {}
+    }
+
+    // Wire the FFmpeg and FFprobe buttons and other modal helpers (open links, copy)
+    if (ffmpegModal) {
+      try {
+        const ffmpegBtn = document.getElementById("ffmpegBtn");
+        const ffprobeBtn = document.getElementById("ffprobeBtn");
+        if (ffmpegBtn) {
+          ffmpegBtn.addEventListener("click", (ev) => {
+            ev.preventDefault();
             try {
-              const ta = document.createElement("textarea");
-              ta.value = txt;
-              document.body.appendChild(ta);
-              ta.select();
-              document.execCommand("copy");
-              document.body.removeChild(ta);
-              ok = true;
+              const { shell } = require("electron");
+              const url = ffmpegBtn.getAttribute("data-url") || "https://evermeet.cx/ffmpeg/ffmpeg-8.0.7z";
+              shell.openExternal(url);
             } catch (e) {
-              ok = false;
+              window.open(ffmpegBtn.getAttribute("data-url") || "https://evermeet.cx/ffmpeg/ffmpeg-8.0.7z", "_blank");
             }
+          });
+        }
+        if (ffprobeBtn) {
+          ffprobeBtn.addEventListener("click", (ev) => {
+            ev.preventDefault();
+            try {
+              const { shell } = require("electron");
+              const url = ffprobeBtn.getAttribute("data-url") || "https://evermeet.cx/ffmpeg/ffprobe-8.0.7z";
+              shell.openExternal(url);
+            } catch (e) {
+              window.open(ffprobeBtn.getAttribute("data-url") || "https://evermeet.cx/ffmpeg/ffprobe-8.0.7z", "_blank");
+            }
+          });
+        }
+      } catch (e) {}
+
+      document.querySelectorAll(".ffmpeg-link").forEach((a) => {
+        a.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          try {
+            const { shell } = require("electron");
+            const url = a.getAttribute("data-url") || a.href;
+            shell.openExternal(url);
+          } catch (e) {
+            window.open(a.href, "_blank");
           }
-          const prev = copyBtn.textContent;
-          if (ok) {
-            copyBtn.textContent = "Copied!";
-          } else {
-            copyBtn.textContent = "Copy failed";
-          }
-          setTimeout(() => (copyBtn.textContent = prev), 1500);
+        });
+      });
+
+      try {
+        const copyBtn = document.getElementById("ffmpegCopyBtn");
+        const cmdEl = document.getElementById("ffmpegCmd");
+        if (copyBtn && cmdEl) {
+          copyBtn.addEventListener("click", async () => {
+            const txt = cmdEl.textContent || cmdEl.innerText || "";
+            let ok = false;
+            try {
+              if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(txt);
+                ok = true;
+              }
+            } catch (e) {}
+            if (!ok) {
+              try {
+                const ta = document.createElement("textarea");
+                ta.value = txt;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+                ok = true;
+              } catch (e) {
+                ok = false;
+              }
+            }
+            const prev = copyBtn.textContent;
+            if (ok) copyBtn.textContent = "Copied!";
+            else copyBtn.textContent = "Copy failed";
+            setTimeout(() => (copyBtn.textContent = prev), 1500);
+          });
+        }
+      } catch (e) {}
+    }
+
+    try {
+      const ffmpegOkBtn = document.getElementById("ffmpegOk");
+      if (ffmpegOkBtn) {
+        ffmpegOkBtn.addEventListener("click", () => {
+          try {
+            const ffmpegDontShowEl = document.getElementById("ffmpegDontShow");
+            if (ffmpegDontShowEl && ffmpegDontShowEl.checked) {
+              try {
+                localStorage.setItem("ffmpegDontShow", "1");
+              } catch (e) {}
+            }
+            const ffm = document.getElementById("ffmpegModal");
+            if (ffm) ffm.classList.remove("visible");
+          } catch (e) {}
         });
       }
     } catch (e) {}
+  } catch (e) {
+    // ignore any detection errors
   }
-
-  if (ffmpegOk) {
-    ffmpegOk.addEventListener("click", () => {
-      if (ffmpegDontShow && ffmpegDontShow.checked) {
-        try {
-          localStorage.setItem("ffmpegDontShow", "1");
-        } catch (e) {}
-      }
-      if (ffmpegModal) ffmpegModal.classList.remove("visible");
-    });
-  }
-} catch (e) {
-  // ignore if child_process or spawnSync not available in this environment
-}
+})();

@@ -143,6 +143,15 @@ body {
   gap: 6px;
   align-items: center;
 }
+
+/* On macOS use native titlebar; hide the custom in-app titlebar when running on mac */
+.platform-mac .titlebar {
+  display: none !important;
+}
+.platform-mac .topbar {
+  /* Using the real native titlebar */
+  padding-top: 5px !important;
+}
 .win-btn {
   -webkit-app-region: no-drag; /* buttons must be clickable */
   background: transparent;
@@ -236,6 +245,7 @@ body.dark .win-btn {
   box-shadow: 0 6px 18px rgba(16, 24, 40, 0.04);
 }
 .btn.primary {
+  /* Use brand gradient that matches the app's title/brand */
   background: linear-gradient(90deg, #4f46e5, #7c3aed);
   color: white;
 }
@@ -460,7 +470,9 @@ body.dark .list li {
 .list ul {
   list-style: none;
   padding: 0;
-  margin: 0;
+  /* add top margin so the gap between the drop hint and first file matches
+     the gap between file rows */
+  margin: 6px 0 0 0;
 }
 .list li {
   display: flex;
@@ -678,3 +690,51 @@ body.dark::-webkit-scrollbar-thumb {
   transform: translateY(-2px);
   box-shadow: 0 12px 30px rgba(16, 24, 40, 0.12);
 }
+
+/* Lite button styling: default subtle, ghost in dark mode */
+#liteBtn {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid rgba(0,0,0,0.06);
+  padding: 4px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 12px;
+  line-height: 1;
+  min-width: 72px;
+  box-shadow: none;
+}
+#liteBtn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(16,24,40,0.06);
+}
+
+/* Dark mode: make Lite a ghost button (transparent with light border and text)
+   matching the attached design */
+body.dark #liteBtn {
+  background: rgba(255,255,255,0.02);
+  color: var(--muted);
+  border: 1px solid rgba(255,255,255,0.06);
+  box-shadow: none;
+}
+
+/* Indicate active lite-mode with a subtle filled pill */
+.lite-mode #liteBtn {
+  background: linear-gradient(90deg, #4f46e5, #7c3aed);
+  color: #fff;
+  border: 0;
+}
+
+/* Lite mode: disable heavy visuals for low-end devices */
+.lite-mode .bg-blobs { display: none !important; }
+.lite-mode .bg-blobs .blob { animation: none !important; opacity: 0 !important; filter: none !important; }
+.lite-mode * { transition: none !important; animation: none !important; }
+.lite-mode .btn { box-shadow: none !important; }
+.lite-mode .list { box-shadow: none !important; }
+.lite-mode .list li:hover { transform: none !important; box-shadow: none !important; }
+.lite-mode .drop-hint { backdrop-filter: none !important; }
+.lite-mode .progress-bar > i, .lite-mode .progress > i { transition: none !important; }
+.lite-mode .thumb-fade { transition: none !important; }
+.lite-mode body::-webkit-scrollbar-thumb { box-shadow: none !important; }
+.lite-mode .about-modal { box-shadow: none !important; transform: none !important; }
+.lite-mode .modal-overlay { background: rgba(2,6,23,0.55) !important; }
