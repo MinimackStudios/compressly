@@ -1324,18 +1324,35 @@ function renderList() {
       img.style.cursor = "pointer";
       img.addEventListener("click", () => {
         try {
-          const { shell } = require("electron");
           const fs = require("fs");
           const path = require("path");
-          // if compressed output exists for this file, reveal it; otherwise reveal original
           const state = fileStates[p] || {};
-          const target =
-            state.lastOut && fs.existsSync(state.lastOut) ? state.lastOut : p;
+          const target = state.lastOut && fs.existsSync(state.lastOut) ? state.lastOut : p;
+
+          // Primary: ask main process to reveal the file (more reliable on macOS)
           try {
+            const { ipcRenderer } = require("electron");
+            if (ipcRenderer && ipcRenderer.send) {
+              try {
+                ipcRenderer.send("reveal-file", target);
+                return;
+              } catch (e) {
+                // fall through to local fallback
+                console.warn("ipc reveal-file send failed", e);
+              }
+            }
+          } catch (e) {
+            // ignore and fall back
+          }
+
+          // Fallback: try to use shell from renderer if IPC isn't available
+          try {
+            const { shell } = require("electron");
             if (shell && shell.showItemInFolder) shell.showItemInFolder(target);
             else shell.openPath(path.dirname(target));
           } catch (e) {
             try {
+              const { shell } = require("electron");
               shell.openPath(path.dirname(target));
             } catch (ee) {
               console.warn("reveal failed", ee);

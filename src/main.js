@@ -405,6 +405,30 @@ ipcMain.handle("save-dialog", async (event, defaultPath) => {
 
 ipcMain.on("log", (e, ...args) => console.log(...args));
 
+// Expose a simple reveal helper so renderer can ask main to reveal files in Finder
+ipcMain.on("reveal-file", (event, targetPath) => {
+  try {
+    const { shell } = require("electron");
+    const pathModule = require("path");
+    if (shell && typeof shell.showItemInFolder === "function") {
+      try {
+        shell.showItemInFolder(targetPath);
+        return;
+      } catch (e) {
+        // fallthrough to openPath fallback
+      }
+    }
+    // fallback: open the containing folder
+    try {
+      shell.openPath(pathModule.dirname(targetPath));
+    } catch (e) {
+      console.warn("reveal-file openPath fallback failed", e);
+    }
+  } catch (e) {
+    console.warn("reveal-file failed", e);
+  }
+});
+
 // Minimize the window, then close after a short delay (delay in ms passed from renderer)
 ipcMain.on("minimize-and-close", (event, delayMs = 3000) => {
   try {
