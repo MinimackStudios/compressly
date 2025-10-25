@@ -496,7 +496,7 @@ ipcMain.on("run-installer-and-exit", (event, installerPath, args = []) => {
         console.warn("failed to launch msi with msiexec", e);
       }
     } else {
-      // Default: attempt to spawn the installer directly (for .exe, AppImage, etc.)
+      // Default: attempt to spawn the installer directly (for .exe, .msi, etc.)
       try {
         const child = spawn(installerPath, argv, {
           detached: true,

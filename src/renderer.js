@@ -94,6 +94,37 @@ try {
   } catch (e) {}
 })();
 
+// Initialize FFmpeg modal UI per-platform immediately to avoid race conditions
+try {
+  setTimeout(() => {
+    try {
+      const platform = (window && window.electronAPI && window.electronAPI.platform) || (typeof process !== 'undefined' ? process.platform : '');
+      const ffmpegDownloads = document.getElementById('ffmpegDownloads');
+      const ffmpegCmdEl = document.getElementById('ffmpegCmd');
+      const ffmpegCopyBtn = document.getElementById('ffmpegCopyBtn');
+      const txtEl = document.getElementById('ffmpegInstallText');
+      if (!ffmpegDownloads || !ffmpegCmdEl) return;
+      if (platform === 'win32') {
+        try { ffmpegDownloads.style.display = 'none'; } catch (e) {}
+        try { ffmpegCmdEl.textContent = 'winget install ffmpeg'; ffmpegCmdEl.style.display = 'inline-block'; } catch (e) {}
+        try { ffmpegCopyBtn.style.display = 'inline-block'; } catch (e) {}
+        try { if (txtEl) txtEl.textContent = 'Install FFmpeg using Windows Package Manager (PowerShell):'; } catch (e) {}
+      } else if (platform === 'darwin') {
+        try { ffmpegDownloads.style.display = 'flex'; } catch (e) {}
+        try { ffmpegCmdEl.style.display = 'none'; } catch (e) {}
+        try { ffmpegCopyBtn.style.display = 'none'; } catch (e) {}
+        try { if (txtEl) txtEl.textContent = 'Please download these 2 FFmpeg binaries for macOS, extract them, and place them in /usr/local/bin:'; } catch (e) {}
+      } else {
+        // default: non-mac platforms assume Windows-style winget command
+        try { ffmpegDownloads.style.display = 'none'; } catch (e) {}
+        try { ffmpegCmdEl.textContent = 'winget install ffmpeg'; ffmpegCmdEl.style.display = 'inline-block'; } catch (e) {}
+        try { ffmpegCopyBtn.style.display = 'inline-block'; } catch (e) {}
+        try { if (txtEl) txtEl.textContent = 'Install FFmpeg using Windows Package Manager (PowerShell):'; } catch (e) {}
+      }
+    } catch (e) {}
+  }, 50);
+} catch (e) {}
+
 // Helper: choose the best release asset for this platform (case-insensitive)
 function selectReleaseAsset(assets) {
   try {
@@ -123,12 +154,10 @@ function selectReleaseAsset(assets) {
       a = normalized.find(x => x.lname.endsWith('.zip'));
       if (a) return a;
     } else {
-      // linux/other
-      let a = normalized.find(x => x.lname.endsWith('.appimage'));
+      // other/unknown: prefer Windows-style installers as a safe default
+      let a = normalized.find(x => x.lname.endsWith('.exe'));
       if (a) return a;
-      a = normalized.find(x => x.lname.endsWith('.deb'));
-      if (a) return a;
-      a = normalized.find(x => x.lname.endsWith('.tar.gz') || x.lname.endsWith('.tgz'));
+      a = normalized.find(x => x.lname.endsWith('.msi'));
       if (a) return a;
       a = normalized.find(x => x.lname.endsWith('.zip'));
       if (a) return a;
@@ -141,8 +170,8 @@ function selectReleaseAsset(assets) {
       if (match) return match;
     }
 
-    // Fallback: prefer any asset that looks like a mac/linux/windows binary by extension
-    const fallback = normalized.find(x => x.lname.match(/\.dmg$|\.pkg$|\.zip$|\.exe$|\.msi$|\.deb$|\.tar\.gz$|\.appimage$|\.AppImage$/i));
+  // Fallback: prefer any asset that looks like a mac/windows binary by extension
+  const fallback = normalized.find(x => x.lname.match(/\.dmg$|\.pkg$|\.zip$|\.exe$|\.msi$/i));
     if (fallback) return fallback;
 
     // Final fallback: first asset
@@ -2277,20 +2306,23 @@ async function generateVideoThumbnail(videoPath, opts = {}) {
         const ffprobeBtn = document.getElementById("ffprobeBtn");
         const txtEl = document.getElementById("ffmpegInstallText");
         const platform = (window && window.electronAPI && window.electronAPI.platform) || process.platform;
+        // locate new elements
+        const ffmpegDownloads = document.getElementById('ffmpegDownloads');
+        const ffmpegCmdEl = document.getElementById('ffmpegCmd');
+        const ffmpegCopyBtn = document.getElementById('ffmpegCopyBtn');
         if (platform === "darwin") {
           if (txtEl) txtEl.textContent = "Please download these 2 FFmpeg binaries for macOS, extract them, and place them in /usr/local/bin:";
-          if (ffmpegBtn) ffmpegBtn.style.display = "inline-block";
-          if (ffprobeBtn) ffprobeBtn.style.display = "inline-block";
-        } else if (platform === "linux") {
-          if (cmdEl) cmdEl.textContent = "sudo apt install ffmpeg";
-          if (txtEl) txtEl.textContent = "Install FFmpeg using your distribution package manager (e.g., apt):";
-          if (ffmpegBtn) ffmpegBtn.style.display = "inline-block";
-          if (ffprobeBtn) ffprobeBtn.style.display = "inline-block";
+          // show download buttons, hide command UI
+          try { if (ffmpegDownloads) ffmpegDownloads.style.display = 'flex'; } catch (e) {}
+          try { if (ffmpegCmdEl) ffmpegCmdEl.style.display = 'none'; } catch (e) {}
+          try { if (ffmpegCopyBtn) ffmpegCopyBtn.style.display = 'none'; } catch (e) {}
         } else {
+          // Non-mac platforms: show winget command by default (Windows)
           if (cmdEl) cmdEl.textContent = "winget install ffmpeg";
           if (txtEl) txtEl.textContent = "Install FFmpeg using Windows Package Manager (PowerShell):";
-          if (ffmpegBtn) ffmpegBtn.style.display = "inline-block";
-          if (ffprobeBtn) ffprobeBtn.style.display = "inline-block";
+          try { if (ffmpegDownloads) ffmpegDownloads.style.display = 'none'; } catch (e) {}
+          try { if (ffmpegCmdEl) { ffmpegCmdEl.textContent = 'winget install ffmpeg'; ffmpegCmdEl.style.display = 'inline-block'; } } catch (e) {}
+          try { if (ffmpegCopyBtn) ffmpegCopyBtn.style.display = 'inline-block'; } catch (e) {}
         }
       } catch (e) {}
       try { ffmpegModal.classList.add("visible"); } catch (e) {}
