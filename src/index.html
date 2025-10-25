@@ -224,9 +224,16 @@
             <p id="ffmpegInstallText">
               Install FFmpeg using Windows Package Manager (PowerShell):
             </p>
-            <div style="display:flex; justify-content:center; gap:8px; margin-top:12px">
+            <!-- macOS downloads (shown only on darwin) -->
+            <div id="ffmpegDownloads" style="display:none; justify-content:center; gap:8px; margin-top:12px">
               <button id="ffmpegBtn" class="btn primary" data-url="https://evermeet.cx/ffmpeg/ffmpeg-8.0.7z">FFmpeg</button>
               <button id="ffprobeBtn" class="btn primary" data-url="https://evermeet.cx/ffmpeg/ffprobe-8.0.7z">FFprobe</button>
+            </div>
+
+            <!-- Windows install command (pre + copy) -->
+            <div class="ffmpeg-install" style="margin-top:6px; display:none; justify-content:center; gap:8px; align-items:center">
+              <pre id="ffmpegCmd">winget install ffmpeg</pre>
+              <button id="ffmpegCopyBtn" type="button" class="btn primary" aria-label="Copy FFmpeg install command">Copy</button>
             </div>
             <label
               style="
