@@ -718,11 +718,20 @@ body.dark #liteBtn {
   box-shadow: none;
 }
 
-/* Indicate active lite-mode with a subtle filled pill */
+/* Keep Lite button as a ghost button even when lite-mode is active */
 .lite-mode #liteBtn {
-  background: linear-gradient(90deg, #4f46e5, #7c3aed);
-  color: #fff;
-  border: 0;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid rgba(0,0,0,0.06);
+  box-shadow: none;
+}
+
+/* In dark theme + lite-mode, keep the ghost styling appropriate for dark */
+body.dark .lite-mode #liteBtn {
+  background: rgba(255,255,255,0.02);
+  color: var(--muted);
+  border: 1px solid rgba(255,255,255,0.06);
+  box-shadow: none;
 }
 
 /* Lite mode: disable heavy visuals for low-end devices */
