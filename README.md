@@ -1,6 +1,6 @@
 # Compressly
 
-**Compressly** is a desktop app built with Electron that compresses images and videos to a target file size. It’s designed to be simple, fast, and useful, especially for people who need lightweight media without sacrificing quality.
+**Compressly** is a desktop app built with Electron that compresses images and videos to a target file size. It’s designed to be simple, fast, and useful, especially for people who need lightweight media without sacrificing quality. **Requires Windows 10 and macOS High Sierra or higher.**
 
 There are many tools for compressing videos, but few that also support
 images & audio, fewer still that work entirely offline, and even fewer
