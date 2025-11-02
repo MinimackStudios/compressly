@@ -1,4 +1,10 @@
-const { app, BrowserWindow, ipcMain, dialog, nativeTheme } = require("electron");
+const {
+  app,
+  BrowserWindow,
+  ipcMain,
+  dialog,
+  nativeTheme,
+} = require("electron");
 const { Menu } = require("electron");
 const path = require("path");
 const Store = require("electron-store");
@@ -34,7 +40,7 @@ function createWindow() {
       : path.join(__dirname, "compressly.png"),
     autoHideMenuBar: true,
     backgroundColor: "#f6f8fa",
-  frame: isMac ? true : false,
+    frame: isMac ? true : false,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       // Allow renderer require() and built-in modules for this local app.
@@ -54,9 +60,9 @@ function createWindow() {
     win.show();
     // Inform renderer about user's lite preference so UI can be adjusted early
     try {
-      const lite = !!store.get('liteMode');
+      const lite = !!store.get("liteMode");
       try {
-        win.webContents.send('lite-mode', lite);
+        win.webContents.send("lite-mode", lite);
       } catch (e) {}
     } catch (e) {}
   });
@@ -83,7 +89,11 @@ app.whenReady().then(() => {
       app.setName("Compressly");
       // If an icns file exists next to the app sources, use it for the dock
       const dockIcon = path.join(__dirname, "compressly.icns");
-      if (fs.existsSync(dockIcon) && app.dock && typeof app.dock.setIcon === "function") {
+      if (
+        fs.existsSync(dockIcon) &&
+        app.dock &&
+        typeof app.dock.setIcon === "function"
+      ) {
         try {
           app.dock.setIcon(dockIcon);
         } catch (e) {}
@@ -108,32 +118,38 @@ app.whenReady().then(() => {
         {
           label: app.name || "Compressly",
           submenu: [
-              {
-                label: "About Compressly",
-                click: (menuItem, browserWindow) => {
-                  try {
-                    const win = browserWindow || BrowserWindow.getFocusedWindow();
-                    if (win && win.webContents && typeof win.webContents.send === 'function') {
-                      win.webContents.send('open-about-modal');
-                    } else {
-                      // broadcast to all windows if no focused window
-                      const { BrowserWindow: BW } = require('electron');
-                      BW.getAllWindows().forEach(w => {
-                        try { w.webContents.send('open-about-modal'); } catch (e) {}
-                      });
-                    }
-                  } catch (e) {}
-                }
+            {
+              label: "About Compressly",
+              click: (menuItem, browserWindow) => {
+                try {
+                  const win = browserWindow || BrowserWindow.getFocusedWindow();
+                  if (
+                    win &&
+                    win.webContents &&
+                    typeof win.webContents.send === "function"
+                  ) {
+                    win.webContents.send("open-about-modal");
+                  } else {
+                    // broadcast to all windows if no focused window
+                    const { BrowserWindow: BW } = require("electron");
+                    BW.getAllWindows().forEach((w) => {
+                      try {
+                        w.webContents.send("open-about-modal");
+                      } catch (e) {}
+                    });
+                  }
+                } catch (e) {}
               },
-              { type: "separator" },
-              { role: "services" },
-              { type: "separator" },
-              { role: "hide" },
-              { role: "hideothers" },
-              { role: "unhide" },
-              { type: "separator" },
-              { role: "quit" },
-            ],
+            },
+            { type: "separator" },
+            { role: "services" },
+            { type: "separator" },
+            { role: "hide" },
+            { role: "hideothers" },
+            { role: "unhide" },
+            { type: "separator" },
+            { role: "quit" },
+          ],
         },
         // Edit menu
         {
@@ -153,9 +169,7 @@ app.whenReady().then(() => {
         // Help fallback
         {
           role: "help",
-          submenu: [
-            { label: "Learn More", click: () => {} },
-          ],
+          submenu: [{ label: "Learn More", click: () => {} }],
         },
       ];
       const menu = Menu.buildFromTemplate(template);
@@ -195,27 +209,35 @@ ipcMain.handle("set-app-theme", async (event, theme) => {
 });
 
 // Allow renderer to set lite-mode (from in-app button) so menu and store stay in sync
-ipcMain.on('set-lite-mode', (event, enabled) => {
+ipcMain.on("set-lite-mode", (event, enabled) => {
   try {
     const v = !!enabled;
-    store.set('liteMode', v);
+    store.set("liteMode", v);
     // update menu checkbox if present
     try {
       const menu = Menu.getApplicationMenu();
       if (menu && menu.items && menu.items.length) {
         // find app menu (first menu usually the app name on mac)
-        const appMenu = menu.items.find(mi => mi.role === 'appmenu' || mi.label === (app.name || 'Compressly')) || menu.items[0];
+        const appMenu =
+          menu.items.find(
+            (mi) =>
+              mi.role === "appmenu" || mi.label === (app.name || "Compressly")
+          ) || menu.items[0];
         if (appMenu && appMenu.submenu && appMenu.submenu.items) {
-          const liteItem = appMenu.submenu.items.find(si => si.label === 'Lite');
+          const liteItem = appMenu.submenu.items.find(
+            (si) => si.label === "Lite"
+          );
           if (liteItem) liteItem.checked = v;
         }
       }
     } catch (e) {}
     // notify all windows of the change
     try {
-      const { BrowserWindow } = require('electron');
-      BrowserWindow.getAllWindows().forEach(w => {
-        try { w.webContents.send('lite-mode', v); } catch (e) {}
+      const { BrowserWindow } = require("electron");
+      BrowserWindow.getAllWindows().forEach((w) => {
+        try {
+          w.webContents.send("lite-mode", v);
+        } catch (e) {}
       });
     } catch (e) {}
   } catch (e) {}
@@ -239,6 +261,25 @@ ipcMain.handle("get-ffmpeg-path", async () => {
       } catch (e) {}
     }
 
+    // Check for bundled ffmpeg shipped as an extraResource by the builder.
+    // When packaged the files are copied to <app>/resources/ffmpeg/<platform>/*
+    try {
+      const resBase = process && process.resourcesPath;
+      if (resBase) {
+        const bundled = {
+          win32: path.join(resBase, "ffmpeg", "win32", "ffmpeg.exe"),
+          darwin: path.join(resBase, "ffmpeg", "darwin", "ffmpeg"),
+        };
+        const b = bundled[process.platform];
+        if (b && fs.existsSync(b)) {
+          try {
+            if (process.platform !== "win32") fs.chmodSync(b, 0o755);
+          } catch (e) {}
+          return b;
+        }
+      }
+    } catch (e) {}
+
     // Fallback to ffmpeg-static if available. If the binary is inside an
     // asar archive it cannot be executed directly, so copy it to a temp
     // location and return that path (with executable bit set).
@@ -253,10 +294,15 @@ ipcMain.handle("get-ffmpeg-path", async () => {
               const os = require("os");
               const pathModule = require("path");
               const base = pathModule.basename(p);
-              const out = pathModule.join(os.tmpdir(), `compressly_ffmpeg_${base}`);
+              const out = pathModule.join(
+                os.tmpdir(),
+                `compressly_ffmpeg_${base}`
+              );
               if (!fs.existsSync(out)) {
                 fs.copyFileSync(p, out);
-                try { fs.chmodSync(out, 0o755); } catch (e) {}
+                try {
+                  fs.chmodSync(out, 0o755);
+                } catch (e) {}
               }
               return out;
             } catch (e) {
@@ -291,6 +337,24 @@ ipcMain.handle("get-ffprobe-path", async () => {
       } catch (e) {}
     }
 
+    // Check for bundled ffprobe shipped in resources alongside ffmpeg
+    try {
+      const resBase = process && process.resourcesPath;
+      if (resBase) {
+        const bundledProbe = {
+          win32: path.join(resBase, "ffmpeg", "win32", "ffprobe.exe"),
+          darwin: path.join(resBase, "ffmpeg", "darwin", "ffprobe"),
+        };
+        const bp = bundledProbe[process.platform];
+        if (bp && fs.existsSync(bp)) {
+          try {
+            if (process.platform !== "win32") fs.chmodSync(bp, 0o755);
+          } catch (e) {}
+          return bp;
+        }
+      }
+    } catch (e) {}
+
     try {
       const ffprobeStatic = require("ffprobe-static");
       let p = ffprobeStatic && (ffprobeStatic.path || ffprobeStatic);
@@ -300,10 +364,15 @@ ipcMain.handle("get-ffprobe-path", async () => {
             const os = require("os");
             const pathModule = require("path");
             const base = pathModule.basename(p);
-            const out = pathModule.join(os.tmpdir(), `compressly_ffprobe_${base}`);
+            const out = pathModule.join(
+              os.tmpdir(),
+              `compressly_ffprobe_${base}`
+            );
             if (!fs.existsSync(out)) {
               fs.copyFileSync(p, out);
-              try { fs.chmodSync(out, 0o755); } catch (e) {}
+              try {
+                fs.chmodSync(out, 0o755);
+              } catch (e) {}
             }
             return out;
           } catch (e) {}
@@ -321,44 +390,68 @@ ipcMain.handle("get-ffprobe-path", async () => {
 
 // Expose a debug endpoint to help diagnose ffmpeg detection in packaged apps.
 // Invoke from the renderer/devtools: require('electron').ipcRenderer.invoke('debug-ffmpeg').then(console.log)
-ipcMain.handle('debug-ffmpeg', async () => {
+ipcMain.handle("debug-ffmpeg", async () => {
   try {
     // reuse the same lookup logic by invoking our get-ffmpeg-path handler
     // (call the handler functionally by sending an internal invoke)
-    const ffmpegPath = await ipcMain.invoke ? await ipcMain.invoke('get-ffmpeg-path') : null;
+    const ffmpegPath = (await ipcMain.invoke)
+      ? await ipcMain.invoke("get-ffmpeg-path")
+      : null;
     // fallback: try to call the path directly if invoke isn't available
     let resolved = ffmpegPath;
     // if invoke() is not present (older electron), attempt to run same logic inline
     if (!resolved) {
       try {
-        const candidates = ["/usr/local/bin/ffmpeg", "/opt/homebrew/bin/ffmpeg", "/usr/bin/ffmpeg"];
+        const candidates = [
+          "/usr/local/bin/ffmpeg",
+          "/opt/homebrew/bin/ffmpeg",
+          "/usr/bin/ffmpeg",
+        ];
         for (const p of candidates) {
-          try { if (fs.existsSync(p)) { resolved = p; break; } } catch (e) {}
+          try {
+            if (fs.existsSync(p)) {
+              resolved = p;
+              break;
+            }
+          } catch (e) {}
         }
         if (!resolved) {
           try {
-            const ffmpegStatic = require('ffmpeg-static');
+            const ffmpegStatic = require("ffmpeg-static");
             resolved = ffmpegStatic && (ffmpegStatic.path || ffmpegStatic);
           } catch (e) {}
         }
       } catch (e) {}
     }
 
-    const result = { path: resolved || null, ok: false, stdout: null, stderr: null, error: null };
+    const result = {
+      path: resolved || null,
+      ok: false,
+      stdout: null,
+      stderr: null,
+      error: null,
+    };
     if (!resolved) return result;
     try {
-      const { spawnSync } = require('child_process');
-      const proc = spawnSync(resolved, ['-version'], { encoding: 'utf8' });
+      const { spawnSync } = require("child_process");
+      const proc = spawnSync(resolved, ["-version"], { encoding: "utf8" });
       result.stdout = proc.stdout;
       result.stderr = proc.stderr;
-      result.ok = proc.status === 0 || /ffmpeg version/i.test(String(proc.stdout || ''));
+      result.ok =
+        proc.status === 0 || /ffmpeg version/i.test(String(proc.stdout || ""));
       return result;
     } catch (e) {
       result.error = String(e && e.stack ? e.stack : e);
       return result;
     }
   } catch (e) {
-    return { path: null, ok: false, stdout: null, stderr: null, error: String(e && e.stack ? e.stack : e) };
+    return {
+      path: null,
+      ok: false,
+      stdout: null,
+      stderr: null,
+      error: String(e && e.stack ? e.stack : e),
+    };
   }
 });
 
@@ -489,7 +582,8 @@ ipcMain.on("run-installer-and-exit", (event, installerPath, args = []) => {
     const pathModule = require("path");
     // Normalize args to array
     const argv = Array.isArray(args) ? args : [];
-    const ext = (installerPath && pathModule.extname(installerPath).toLowerCase()) || "";
+    const ext =
+      (installerPath && pathModule.extname(installerPath).toLowerCase()) || "";
 
     // Platform-specific handling
     if (process.platform === "darwin" && (ext === ".dmg" || ext === ".pkg")) {
