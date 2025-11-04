@@ -760,6 +760,10 @@ body.dark .lite-mode #liteBtn {
   transition: none !important;
   animation: none !important;
 }
+/* Also disable transitions on the body element itself when lite-mode is active so
+   theme switches (body <-> body.dark) don't animate. This prevents color/background
+   transitions when switching light/dark while Lite Mode is enabled. */
+body.lite-mode { transition: none !important; }
 .lite-mode .btn {
   box-shadow: none !important;
 }
@@ -789,4 +793,13 @@ body.dark .lite-mode #liteBtn {
 }
 .lite-mode .modal-overlay {
   background: rgba(2, 6, 23, 0.55) !important;
+}
+
+/* Visual treatment for controls disabled during processing */
+.processing-disabled {
+  opacity: 0.55 !important;
+  filter: grayscale(60%) !important;
+  /* Remove pointer interactions and show a neutral cursor while disabled */
+  pointer-events: none !important;
+  cursor: default !important;
 }

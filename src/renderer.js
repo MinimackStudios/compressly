@@ -14,6 +14,52 @@ const winMinBtn = document.getElementById("win-min");
 const winMaxBtn = document.getElementById("win-max");
 const winCloseBtn = document.getElementById("win-close");
 
+// Utility: toggle a global processing lock that disables most UI controls
+// while a file is compressing. Exceptions are the About, Lite and theme toggle.
+function setGlobalProcessingLock(on) {
+  try {
+    const exceptionSelectors = ["#aboutBtn", "#liteBtn", "#themeToggle"];
+    // Find all interactive controls
+    const controls = Array.from(
+      document.querySelectorAll("button, input, select, textarea")
+    );
+    controls.forEach((el) => {
+      try {
+        // Skip exceptions: explicit selectors or any element inside the About modal
+        if (exceptionSelectors.some((s) => el.matches && el.matches(s))) return;
+        try {
+          if (el.closest && el.closest('#aboutModal')) return;
+        } catch (e) {}
+        if (on) {
+          // remember previous disabled state to avoid clobbering
+          try {
+            if (el.hasAttribute("data-prev-disabled")) {
+              // already set by us
+            } else {
+              el.setAttribute("data-prev-disabled", el.disabled ? "1" : "0");
+            }
+          } catch (e) {}
+          el.disabled = true;
+          el.classList.add("processing-disabled");
+        } else {
+          // restore previous state
+          try {
+            const prev = el.getAttribute("data-prev-disabled");
+            if (typeof prev === "string") el.disabled = prev === "1";
+            el.removeAttribute("data-prev-disabled");
+          } catch (e) {
+            el.disabled = false;
+          }
+          el.classList.remove("processing-disabled");
+        }
+      } catch (e) {}
+    });
+    // also mark body so CSS rules can target if needed
+    if (on) document.body.classList.add("processing");
+    else document.body.classList.remove("processing");
+  } catch (e) {}
+}
+
 try {
   const { ipcRenderer } = require("electron");
   if (winMinBtn)
@@ -1584,7 +1630,22 @@ function renderList() {
     // make list items focusable and interactive so we can persist hover state
     li.tabIndex = 0;
     // restore hovering state if present to avoid flicker during re-renders
-    if (fileStates[p] && fileStates[p].hovering) li.classList.add("hovering");
+    if (fileStates[p] && fileStates[p].hovering) {
+      try {
+        // Persist hover visually but suppress the entrance animation so
+        // frequent re-renders (progress updates) don't retrigger it.
+        li.style.transition = "none";
+        li.classList.add("hovering");
+        // restore transition on next frame so future mouseenter animates
+        requestAnimationFrame(() => {
+          try {
+            // force layout then restore
+            li.getBoundingClientRect();
+            li.style.transition = "";
+          } catch (e) {}
+        });
+      } catch (e) {}
+    }
     li.addEventListener("mouseenter", () => {
       try {
         if (!fileStates[p]) fileStates[p] = {};
@@ -1602,6 +1663,35 @@ function renderList() {
     li.addEventListener("focus", () => li.classList.add("hovering"));
     li.addEventListener("blur", () => li.classList.remove("hovering"));
 
+    // Ensure the newly-created element's hover class matches the actual
+    // :hover state (fixes cases where re-renders replace elements while the
+    // mouse is stationary and mouseenter/mouseleave do not fire).
+      try {
+        if (typeof li.matches === "function") {
+          if (li.matches(":hover")) {
+            if (!fileStates[p]) fileStates[p] = {};
+            fileStates[p].hovering = true;
+            // Suppress animation when restoring hover during a re-render
+            try {
+              li.style.transition = "none";
+              li.classList.add("hovering");
+              requestAnimationFrame(() => {
+                try {
+                  li.getBoundingClientRect();
+                  li.style.transition = "";
+                } catch (e) {}
+              });
+            } catch (e) {}
+          } else {
+            // If the element isn't hovered but we have stale state, clear it
+            if (fileStates[p] && fileStates[p].hovering) {
+              fileStates[p].hovering = false;
+              li.classList.remove("hovering");
+            }
+          }
+        }
+      } catch (e) {}
+
     fileListEl.appendChild(li);
   }
   // update footer info every render
@@ -1611,6 +1701,8 @@ function renderList() {
 startBtn.addEventListener("click", async () => {
   if (files.length === 0) return alert("No files selected");
   statusEl.textContent = "Compressing...";
+  // Lock UI globally (except About, Lite, Theme)
+  try { setGlobalProcessingLock(true); } catch (e) {}
   startBtn.disabled = true;
   // clear any previous cancellation state for a fresh run
   anyCancelled = false;
@@ -1658,6 +1750,7 @@ startBtn.addEventListener("click", async () => {
 
   statusEl.textContent = anyCancelled ? "Cancelled" : "Done";
   startBtn.disabled = false;
+  try { setGlobalProcessingLock(false); } catch (e) {}
   // open output and highlight first file (skip if user cancelled)
   // removed automatic opening of file explorer per user request
   // user can now click the thumbnail to open the original file (before compress)
