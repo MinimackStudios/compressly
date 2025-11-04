@@ -28,7 +28,7 @@ function setGlobalProcessingLock(on) {
         // Skip exceptions: explicit selectors or any element inside the About modal
         if (exceptionSelectors.some((s) => el.matches && el.matches(s))) return;
         try {
-          if (el.closest && el.closest('#aboutModal')) return;
+          if (el.closest && el.closest("#aboutModal")) return;
         } catch (e) {}
         if (on) {
           // remember previous disabled state to avoid clobbering
@@ -164,12 +164,19 @@ try {
         try {
           const tb = document.querySelector(".titlebar");
           if (tb) tb.style.display = useCustom ? "flex" : "none";
+          try {
+            if (useCustom) document.body.classList.add("has-custom-titlebar");
+            else document.body.classList.remove("has-custom-titlebar");
+          } catch (e) {}
         } catch (e) {}
       } catch (e) {
         chk.checked = true;
         try {
           const tb = document.querySelector(".titlebar");
           if (tb) tb.style.display = "flex";
+          try {
+            document.body.classList.add("has-custom-titlebar");
+          } catch (e) {}
         } catch (e) {}
       }
 
@@ -218,6 +225,15 @@ try {
     try {
       const tb = document.querySelector(".titlebar");
       if (tb) tb.style.display = enabled ? "flex" : "none";
+      try {
+        const platform =
+          (window && window.electronAPI && window.electronAPI.platform) ||
+          (typeof process !== "undefined" ? process.platform : "");
+        if (platform === "win32") {
+          if (enabled) document.body.classList.add("has-custom-titlebar");
+          else document.body.classList.remove("has-custom-titlebar");
+        }
+      } catch (e) {}
     } catch (e) {}
   });
 } catch (e) {}
@@ -1666,31 +1682,31 @@ function renderList() {
     // Ensure the newly-created element's hover class matches the actual
     // :hover state (fixes cases where re-renders replace elements while the
     // mouse is stationary and mouseenter/mouseleave do not fire).
-      try {
-        if (typeof li.matches === "function") {
-          if (li.matches(":hover")) {
-            if (!fileStates[p]) fileStates[p] = {};
-            fileStates[p].hovering = true;
-            // Suppress animation when restoring hover during a re-render
-            try {
-              li.style.transition = "none";
-              li.classList.add("hovering");
-              requestAnimationFrame(() => {
-                try {
-                  li.getBoundingClientRect();
-                  li.style.transition = "";
-                } catch (e) {}
-              });
-            } catch (e) {}
-          } else {
-            // If the element isn't hovered but we have stale state, clear it
-            if (fileStates[p] && fileStates[p].hovering) {
-              fileStates[p].hovering = false;
-              li.classList.remove("hovering");
-            }
+    try {
+      if (typeof li.matches === "function") {
+        if (li.matches(":hover")) {
+          if (!fileStates[p]) fileStates[p] = {};
+          fileStates[p].hovering = true;
+          // Suppress animation when restoring hover during a re-render
+          try {
+            li.style.transition = "none";
+            li.classList.add("hovering");
+            requestAnimationFrame(() => {
+              try {
+                li.getBoundingClientRect();
+                li.style.transition = "";
+              } catch (e) {}
+            });
+          } catch (e) {}
+        } else {
+          // If the element isn't hovered but we have stale state, clear it
+          if (fileStates[p] && fileStates[p].hovering) {
+            fileStates[p].hovering = false;
+            li.classList.remove("hovering");
           }
         }
-      } catch (e) {}
+      }
+    } catch (e) {}
 
     fileListEl.appendChild(li);
   }
@@ -1702,7 +1718,9 @@ startBtn.addEventListener("click", async () => {
   if (files.length === 0) return alert("No files selected");
   statusEl.textContent = "Compressing...";
   // Lock UI globally (except About, Lite, Theme)
-  try { setGlobalProcessingLock(true); } catch (e) {}
+  try {
+    setGlobalProcessingLock(true);
+  } catch (e) {}
   startBtn.disabled = true;
   // clear any previous cancellation state for a fresh run
   anyCancelled = false;
@@ -1750,7 +1768,9 @@ startBtn.addEventListener("click", async () => {
 
   statusEl.textContent = anyCancelled ? "Cancelled" : "Done";
   startBtn.disabled = false;
-  try { setGlobalProcessingLock(false); } catch (e) {}
+  try {
+    setGlobalProcessingLock(false);
+  } catch (e) {}
   // open output and highlight first file (skip if user cancelled)
   // removed automatic opening of file explorer per user request
   // user can now click the thumbnail to open the original file (before compress)

@@ -130,6 +130,39 @@ body,
   border-bottom: 1px solid rgba(255, 255, 255, 0.03);
   z-index: 9998;
 }
+/* Make the custom in-HTML titlebar fixed so page scrolling doesn't overlap it */
+.titlebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+}
+
+/* When the custom titlebar is active, push the page content down so
+   the scrollbar and content don't sit underneath the fixed titlebar. */
+body.has-custom-titlebar {
+  /* we no longer use body padding; instead make the main .app a scrollable
+     region positioned below the fixed titlebar so the scrollbar track itself
+     starts underneath the titlebar (avoids overlap). */
+  padding-top: 0;
+}
+
+/* When custom titlebar is active, make `.app` the scroll container and
+   position it below the fixed titlebar so its scrollbar track begins
+   under the titlebar (the visual cut-off the user requested). */
+body.has-custom-titlebar .app {
+  position: absolute;
+  top: 36px; /* height of .titlebar */
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: auto;
+}
+
+/* Ensure background blobs remain behind content when .app is absolute */
+body.has-custom-titlebar .bg-blobs {
+  position: fixed;
+}
 .titlebar-left {
   display: flex;
   align-items: center;
@@ -649,6 +682,42 @@ body.dark::-webkit-scrollbar-thumb {
     rgba(79, 70, 229, 0.8)
   );
 }
+
+/* When `.app` is the scroll container (custom titlebar active), apply
+   the same custom scrollbar styling to the `.app` element so it matches
+   the previous body scrollbar appearance. */
+body.has-custom-titlebar .app::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+body.has-custom-titlebar .app::-webkit-scrollbar-track {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.01),
+    rgba(0, 0, 0, 0.02)
+  );
+  border-radius: 12px;
+  margin: 8px 0;
+}
+body.has-custom-titlebar .app::-webkit-scrollbar-thumb {
+  background: linear-gradient(
+    180deg,
+    rgba(124, 58, 237, 0.9),
+    rgba(79, 70, 229, 0.9)
+  );
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(16, 24, 40, 0.18);
+}
+body.dark.has-custom-titlebar .app::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.02);
+}
+body.dark.has-custom-titlebar .app::-webkit-scrollbar-thumb {
+  background: linear-gradient(
+    180deg,
+    rgba(124, 58, 237, 0.8),
+    rgba(79, 70, 229, 0.8)
+  );
+}
 .small {
   font-size: 12px;
   color: var(--muted);
@@ -763,7 +832,9 @@ body.dark .lite-mode #liteBtn {
 /* Also disable transitions on the body element itself when lite-mode is active so
    theme switches (body <-> body.dark) don't animate. This prevents color/background
    transitions when switching light/dark while Lite Mode is enabled. */
-body.lite-mode { transition: none !important; }
+body.lite-mode {
+  transition: none !important;
+}
 .lite-mode .btn {
   box-shadow: none !important;
 }
@@ -784,7 +855,10 @@ body.lite-mode { transition: none !important; }
 .lite-mode .thumb-fade {
   transition: none !important;
 }
-.lite-mode body::-webkit-scrollbar-thumb {
+body.lite-mode::-webkit-scrollbar-thumb {
+  box-shadow: none !important;
+}
+body.lite-mode.has-custom-titlebar .app::-webkit-scrollbar-thumb {
   box-shadow: none !important;
 }
 .lite-mode .about-modal {
