@@ -87,6 +87,19 @@ body {
   background: var(--bg);
   color: var(--text);
 }
+/* Smooth theme transition for light/dark toggles */
+html,
+body,
+.topbar,
+.container,
+.titlebar,
+.about-modal,
+.btn,
+.subtitle,
+.drop-hint {
+  transition: background-color 260ms ease, color 260ms ease,
+    border-color 260ms ease, box-shadow 260ms ease;
+}
 .topbar {
   padding: 18px 24px;
   background: linear-gradient(
@@ -695,7 +708,7 @@ body.dark::-webkit-scrollbar-thumb {
 #liteBtn {
   background: transparent;
   color: var(--muted);
-  border: 1px solid rgba(0,0,0,0.06);
+  border: 1px solid rgba(0, 0, 0, 0.06);
   padding: 4px 8px;
   border-radius: 10px;
   font-weight: 600;
@@ -706,15 +719,15 @@ body.dark::-webkit-scrollbar-thumb {
 }
 #liteBtn:hover {
   transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(16,24,40,0.06);
+  box-shadow: 0 6px 18px rgba(16, 24, 40, 0.06);
 }
 
 /* Dark mode: make Lite a ghost button (transparent with light border and text)
    matching the attached design */
 body.dark #liteBtn {
-  background: rgba(255,255,255,0.02);
+  background: rgba(255, 255, 255, 0.02);
   color: var(--muted);
-  border: 1px solid rgba(255,255,255,0.06);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   box-shadow: none;
 }
 
@@ -722,28 +735,58 @@ body.dark #liteBtn {
 .lite-mode #liteBtn {
   background: transparent;
   color: var(--muted);
-  border: 1px solid rgba(0,0,0,0.06);
+  border: 1px solid rgba(0, 0, 0, 0.06);
   box-shadow: none;
 }
 
 /* In dark theme + lite-mode, keep the ghost styling appropriate for dark */
 body.dark .lite-mode #liteBtn {
-  background: rgba(255,255,255,0.02);
+  background: rgba(255, 255, 255, 0.02);
   color: var(--muted);
-  border: 1px solid rgba(255,255,255,0.06);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   box-shadow: none;
 }
 
 /* Lite mode: disable heavy visuals for low-end devices */
-.lite-mode .bg-blobs { display: none !important; }
-.lite-mode .bg-blobs .blob { animation: none !important; opacity: 0 !important; filter: none !important; }
-.lite-mode * { transition: none !important; animation: none !important; }
-.lite-mode .btn { box-shadow: none !important; }
-.lite-mode .list { box-shadow: none !important; }
-.lite-mode .list li:hover { transform: none !important; box-shadow: none !important; }
-.lite-mode .drop-hint { backdrop-filter: none !important; }
-.lite-mode .progress-bar > i, .lite-mode .progress > i { transition: none !important; }
-.lite-mode .thumb-fade { transition: none !important; }
-.lite-mode body::-webkit-scrollbar-thumb { box-shadow: none !important; }
-.lite-mode .about-modal { box-shadow: none !important; transform: none !important; }
-.lite-mode .modal-overlay { background: rgba(2,6,23,0.55) !important; }
+.lite-mode .bg-blobs {
+  display: none !important;
+}
+.lite-mode .bg-blobs .blob {
+  animation: none !important;
+  opacity: 0 !important;
+  filter: none !important;
+}
+.lite-mode * {
+  transition: none !important;
+  animation: none !important;
+}
+.lite-mode .btn {
+  box-shadow: none !important;
+}
+.lite-mode .list {
+  box-shadow: none !important;
+}
+.lite-mode .list li:hover {
+  transform: none !important;
+  box-shadow: none !important;
+}
+.lite-mode .drop-hint {
+  backdrop-filter: none !important;
+}
+.lite-mode .progress-bar > i,
+.lite-mode .progress > i {
+  transition: none !important;
+}
+.lite-mode .thumb-fade {
+  transition: none !important;
+}
+.lite-mode body::-webkit-scrollbar-thumb {
+  box-shadow: none !important;
+}
+.lite-mode .about-modal {
+  box-shadow: none !important;
+  transform: none !important;
+}
+.lite-mode .modal-overlay {
+  background: rgba(2, 6, 23, 0.55) !important;
+}

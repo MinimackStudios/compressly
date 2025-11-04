@@ -90,6 +90,92 @@ try {
   }
 } catch (e) {}
 
+// Windows-only: titlebar toggle (switch between custom frameless and native)
+try {
+  (async () => {
+    try {
+      const platform =
+        (window && window.electronAPI && window.electronAPI.platform) ||
+        (typeof process !== "undefined" ? process.platform : "");
+      const wrap = document.getElementById("titlebarToggleWrap");
+      const chk = document.getElementById("titlebarToggle");
+      if (!wrap || !chk) return;
+      if (platform !== "win32") {
+        // only show on Windows
+        wrap.style.display = "none";
+        return;
+      }
+      // show the control on Windows
+      wrap.style.display = "inline-flex";
+      // request current persisted value from main
+      try {
+        const useCustom = await (window.electronAPI &&
+        window.electronAPI.getUseCustomTitlebar
+          ? window.electronAPI.getUseCustomTitlebar()
+          : true);
+        chk.checked = !!useCustom;
+        // Hide/show the in-HTML custom titlebar element to match the actual frame mode
+        try {
+          const tb = document.querySelector(".titlebar");
+          if (tb) tb.style.display = useCustom ? "flex" : "none";
+        } catch (e) {}
+      } catch (e) {
+        chk.checked = true;
+        try {
+          const tb = document.querySelector(".titlebar");
+          if (tb) tb.style.display = "flex";
+        } catch (e) {}
+      }
+
+      chk.addEventListener("change", async (ev) => {
+        try {
+          const enabled = !!chk.checked;
+          // Ask user to restart so BrowserWindow can be recreated with new frame
+          const ok = confirm(
+            "The app needs to restart to apply the titlebar change. Restart now?"
+          );
+          if (!ok) {
+            // revert checkbox to previous state
+            try {
+              const cur = await (window.electronAPI &&
+              window.electronAPI.getUseCustomTitlebar
+                ? window.electronAPI.getUseCustomTitlebar()
+                : true);
+              chk.checked = !!cur;
+            } catch (e) {}
+            return;
+          }
+          // Apply and restart (main will persist and relaunch)
+          try {
+            if (window.electronAPI && window.electronAPI.applyTitlebarSetting) {
+              window.electronAPI.applyTitlebarSetting(enabled);
+            } else {
+              // fallback: use ipcRenderer directly if available
+              try {
+                require("electron").ipcRenderer.send(
+                  "apply-titlebar-setting",
+                  enabled
+                );
+              } catch (e) {}
+            }
+          } catch (e) {}
+        } catch (e) {}
+      });
+    } catch (e) {}
+  })();
+} catch (e) {}
+
+// Listen for main asking us to show/hide the custom titlebar (sent at ready-to-show)
+try {
+  const { ipcRenderer } = require("electron");
+  ipcRenderer.on("use-custom-titlebar", (ev, enabled) => {
+    try {
+      const tb = document.querySelector(".titlebar");
+      if (tb) tb.style.display = enabled ? "flex" : "none";
+    } catch (e) {}
+  });
+} catch (e) {}
+
 // Dev-only: print resolved ffmpeg path at startup to help debugging.
 (async function devLogFfmpegPath() {
   try {
@@ -1327,7 +1413,8 @@ function renderList() {
           const fs = require("fs");
           const path = require("path");
           const state = fileStates[p] || {};
-          const target = state.lastOut && fs.existsSync(state.lastOut) ? state.lastOut : p;
+          const target =
+            state.lastOut && fs.existsSync(state.lastOut) ? state.lastOut : p;
 
           // Primary: ask main process to reveal the file (more reliable on macOS)
           try {
