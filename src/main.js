@@ -27,6 +27,16 @@ process.on("unhandledRejection", (reason) => {
 
 function createWindow() {
   const isMac = process.platform === "darwin";
+  const isWindows = process.platform === "win32";
+  // Read persisted preference: whether to use the custom frameless titlebar on Windows.
+  // Default: true (use custom frameless titlebar)
+  let useCustomTitlebar = true;
+  try {
+    if (isWindows) {
+      const v = store.get("useCustomTitlebar");
+      if (typeof v === "boolean") useCustomTitlebar = v;
+    }
+  } catch (e) {}
   const win = new BrowserWindow({
     width: 900,
     height: 700,
@@ -40,7 +50,9 @@ function createWindow() {
       : path.join(__dirname, "compressly.png"),
     autoHideMenuBar: true,
     backgroundColor: "#f6f8fa",
-    frame: isMac ? true : false,
+    // If we're on macOS, use the native titlebar. On Windows allow the
+    // persisted preference to opt-out of the custom frameless titlebar.
+    frame: isMac ? true : isWindows ? !useCustomTitlebar : false,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       // Allow renderer require() and built-in modules for this local app.
@@ -64,6 +76,10 @@ function createWindow() {
       try {
         win.webContents.send("lite-mode", lite);
       } catch (e) {}
+    } catch (e) {}
+    // Inform renderer whether the app is using the custom (frameless) titlebar
+    try {
+      win.webContents.send("use-custom-titlebar", useCustomTitlebar);
     } catch (e) {}
   });
 
@@ -551,6 +567,30 @@ ipcMain.on("window-toggle-maximize", (event) => {
     if (!win) return;
     if (win.isMaximized()) win.unmaximize();
     else win.maximize();
+  } catch (e) {}
+});
+
+// Titlebar preference handlers (Windows-only UI control)
+ipcMain.handle("get-use-custom-titlebar", async () => {
+  try {
+    const v = store.get("useCustomTitlebar");
+    return typeof v === "boolean" ? v : true;
+  } catch (e) {
+    return true;
+  }
+});
+
+// Apply the new titlebar preference and restart the app so BrowserWindow
+// can be recreated with the updated `frame` option. Renderer prompts
+// for confirmation before invoking this.
+ipcMain.on("apply-titlebar-setting", (event, enabled) => {
+  try {
+    store.set("useCustomTitlebar", !!enabled);
+  } catch (e) {}
+  try {
+    // Relaunch the app; quit current instance so new frame option is used.
+    app.relaunch();
+    app.exit(0);
   } catch (e) {}
 });
 

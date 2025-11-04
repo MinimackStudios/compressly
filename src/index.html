@@ -12,8 +12,12 @@
     <script>
       // If running under Electron, apply a platform class early so CSS can adapt.
       try {
-        if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.platform === 'darwin') {
-          document.documentElement.classList.add('platform-mac');
+        if (
+          typeof window !== "undefined" &&
+          window.electronAPI &&
+          window.electronAPI.platform === "darwin"
+        ) {
+          document.documentElement.classList.add("platform-mac");
         }
       } catch (e) {}
     </script>
@@ -51,7 +55,8 @@
           <div>
             <div class="brand">Compressly</div>
             <div class="subtitle">
-              Compress images, videos & audio without sacrificing too much quality
+              Compress images, videos & audio without sacrificing too much
+              quality
             </div>
           </div>
           <div style="display: flex; align-items: center; gap: 8px">
@@ -64,7 +69,7 @@
             <button
               id="liteBtn"
               class="btn"
-              style="padding: 8px 10px; font-weight: 600; margin-right:6px"
+              style="padding: 8px 10px; font-weight: 600; margin-right: 6px"
               title="Lower graphics and animations for low-end devices"
             >
               Lite
@@ -168,8 +173,8 @@
           <h2>Compressly</h2>
           <div id="aboutBody">
             <p>
-              A small, local Electron app to compress videos, images, and audio for
-              easier sharing.
+              A small, local Electron app to compress videos, images, and audio
+              for easier sharing.
             </p>
             <p><strong>Version:</strong> <span id="aboutVersion">?</span></p>
             <p><strong>Author:</strong> <span id="aboutAuthor">?</span></p>
@@ -184,30 +189,47 @@
               All processing happens locally on your machine using FFmpeg and
               Sharp.
             </p>
-              <button
-                type="button"
-                class="btn primary ffmpeg-link"
-                data-url="https://github.com/MinimackStudios/compressly"
-                aria-label="Open Compressly on GitHub"
+            <button
+              type="button"
+              class="btn primary ffmpeg-link"
+              data-url="https://github.com/MinimackStudios/compressly"
+              aria-label="Open Compressly on GitHub"
+            >
+              <svg
+                aria-hidden="true"
+                focusable="false"
+                height="1em"
+                width="1em"
+                viewBox="0 0 24 24"
+                style="
+                  vertical-align: middle;
+                  margin-right: 0.5rem;
+                  fill: currentColor;
+                "
+                xmlns="http://www.w3.org/2000/svg"
               >
-                <svg
-                  aria-hidden="true"
-                  focusable="false"
-                  height="1em"
-                  width="1em"
-                  viewBox="0 0 24 24"
-                  style="
-                    vertical-align: middle;
-                    margin-right: 0.5rem;
-                    fill: currentColor;
-                  "
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path d="M12 .297a12 12 0 00-3.793 23.394c.6.11.82-.26.82-.58 0-.29-.01-1.05-.02-2.06-3.338.73-4.042-1.61-4.042-1.61-.546-1.39-1.333-1.76-1.333-1.76-1.09-.75.082-.74.082-.74 1.205.084 1.84 1.24 1.84 1.24 1.07 1.83 2.8 1.3 3.485.99.108-.77.42-1.3.763-1.6-2.665-.3-5.466-1.33-5.466-5.93 0-1.31.468-2.38 1.235-3.22-.124-.303-.535-1.523.117-3.176 0 0 1.008-.322 3.3 1.23a11.49 11.49 0 016 0c2.29-1.552 3.297-1.23 3.297-1.23.653 1.653.243 2.873.12 3.176.77.84 1.233 1.91 1.233 3.22 0 4.61-2.804 5.625-5.475 5.92.432.372.816 1.102.816 2.222 0 1.606-.015 2.9-.015 3.293 0 .32.216.694.825.576A12.005 12.005 0 0012 .297" />
-                </svg>
-                View on GitHub
-              </button>
-            </p>
+                <path
+                  d="M12 .297a12 12 0 00-3.793 23.394c.6.11.82-.26.82-.58 0-.29-.01-1.05-.02-2.06-3.338.73-4.042-1.61-4.042-1.61-.546-1.39-1.333-1.76-1.333-1.76-1.09-.75.082-.74.082-.74 1.205.084 1.84 1.24 1.84 1.24 1.07 1.83 2.8 1.3 3.485.99.108-.77.42-1.3.763-1.6-2.665-.3-5.466-1.33-5.466-5.93 0-1.31.468-2.38 1.235-3.22-.124-.303-.535-1.523.117-3.176 0 0 1.008-.322 3.3 1.23a11.49 11.49 0 016 0c2.29-1.552 3.297-1.23 3.297-1.23.653 1.653.243 2.873.12 3.176.77.84 1.233 1.91 1.233 3.22 0 4.61-2.804 5.625-5.475 5.92.432.372.816 1.102.816 2.222 0 1.606-.015 2.9-.015 3.293 0 .32.216.694.825.576A12.005 12.005 0 0012 .297"
+                />
+              </svg>
+              View on GitHub
+            </button>
+            <label
+              id="titlebarToggleWrap"
+              style="
+                display: none;
+                margin-left: 12px;
+                align-items: center;
+                gap: 8px;
+              "
+            >
+              <input
+                type="checkbox"
+                id="titlebarToggle"
+                style="margin-right: 0px"
+              />
+              <span class="small">Custom titlebar</span>
+            </label>
           </div>
         </div>
       </div>
@@ -225,15 +247,51 @@
               Install FFmpeg using Windows Package Manager (PowerShell):
             </p>
             <!-- macOS downloads (shown only on darwin) -->
-            <div id="ffmpegDownloads" style="display:none; justify-content:center; gap:8px; margin-top:12px">
-              <button id="ffmpegBtn" class="btn primary" data-url="https://evermeet.cx/ffmpeg/ffmpeg-8.0.7z">FFmpeg</button>
-              <button id="ffprobeBtn" class="btn primary" data-url="https://evermeet.cx/ffmpeg/ffprobe-8.0.7z">FFprobe</button>
+            <div
+              id="ffmpegDownloads"
+              style="
+                display: none;
+                justify-content: center;
+                gap: 8px;
+                margin-top: 12px;
+              "
+            >
+              <button
+                id="ffmpegBtn"
+                class="btn primary"
+                data-url="https://evermeet.cx/ffmpeg/ffmpeg-8.0.7z"
+              >
+                FFmpeg
+              </button>
+              <button
+                id="ffprobeBtn"
+                class="btn primary"
+                data-url="https://evermeet.cx/ffmpeg/ffprobe-8.0.7z"
+              >
+                FFprobe
+              </button>
             </div>
 
             <!-- Windows install command (pre + copy) -->
-            <div class="ffmpeg-install" style="margin-top:6px; display:none; justify-content:center; gap:8px; align-items:center">
+            <div
+              class="ffmpeg-install"
+              style="
+                margin-top: 6px;
+                display: none;
+                justify-content: center;
+                gap: 8px;
+                align-items: center;
+              "
+            >
               <pre id="ffmpegCmd">winget install ffmpeg</pre>
-              <button id="ffmpegCopyBtn" type="button" class="btn primary" aria-label="Copy FFmpeg install command">Copy</button>
+              <button
+                id="ffmpegCopyBtn"
+                type="button"
+                class="btn primary"
+                aria-label="Copy FFmpeg install command"
+              >
+                Copy
+              </button>
             </div>
             <label
               style="
@@ -257,26 +315,69 @@
       <!-- Update available modal -->
       <div id="updateModal" class="modal-overlay">
         <div class="about-modal">
-          <button id="updateClose" class="file-action-btn" style="float: right">✕</button>
+          <button id="updateClose" class="file-action-btn" style="float: right">
+            ✕
+          </button>
           <h3>New release available</h3>
-          <div id="updateBody" style="margin-top:8px">
-            <p>
-              Latest version: <strong id="updateLatest">?</strong>
-            </p>
-            <p>
-              Current version: <strong id="updateLocal">?</strong>
-            </p>
-            <div id="updateNotes" style="white-space:pre-wrap; max-height:220px; overflow:auto; margin-top:8px; color:var(--muted);">Visit the GitHub releases page for the release notes.</div>
-            <!-- reuse the same progress-bar used for file compression so styles match -->
-            <div style="display:flex; justify-content:center; align-items:center; gap:10px; margin-top:10px;">
-              <div id="updateProgressWrap" class="progress-bar" style="width:320px; display:none;">
-                <i id="updateProgressBar" style="width:0%"></i>
-              </div>
-              <div id="updateProgressPct" class="small" style="min-width:44px; text-align:right; color:var(--muted); display:none">0%</div>
+          <div id="updateBody" style="margin-top: 8px">
+            <p>Latest version: <strong id="updateLatest">?</strong></p>
+            <p>Current version: <strong id="updateLocal">?</strong></p>
+            <div
+              id="updateNotes"
+              style="
+                white-space: pre-wrap;
+                max-height: 220px;
+                overflow: auto;
+                margin-top: 8px;
+                color: var(--muted);
+              "
+            >
+              Visit the GitHub releases page for the release notes.
             </div>
-            <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px">
-              <button id="updateDownloadBtn" class="btn success">Download</button>
-              <button id="updateViewBtn" class="btn primary">View release</button>
+            <!-- reuse the same progress-bar used for file compression so styles match -->
+            <div
+              style="
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                gap: 10px;
+                margin-top: 10px;
+              "
+            >
+              <div
+                id="updateProgressWrap"
+                class="progress-bar"
+                style="width: 320px; display: none"
+              >
+                <i id="updateProgressBar" style="width: 0%"></i>
+              </div>
+              <div
+                id="updateProgressPct"
+                class="small"
+                style="
+                  min-width: 44px;
+                  text-align: right;
+                  color: var(--muted);
+                  display: none;
+                "
+              >
+                0%
+              </div>
+            </div>
+            <div
+              style="
+                display: flex;
+                justify-content: flex-end;
+                gap: 8px;
+                margin-top: 12px;
+              "
+            >
+              <button id="updateDownloadBtn" class="btn success">
+                Download
+              </button>
+              <button id="updateViewBtn" class="btn primary">
+                View release
+              </button>
             </div>
           </div>
         </div>
@@ -284,14 +385,37 @@
       <!-- Long video warning modal -->
       <div id="longVideoModal" class="modal-overlay">
         <div class="about-modal">
-          <button id="longVideoClose" class="file-action-btn" style="float: right">✕</button>
+          <button
+            id="longVideoClose"
+            class="file-action-btn"
+            style="float: right"
+          >
+            ✕
+          </button>
           <h3>Long video(s) detected</h3>
-          <div id="longVideoBody" style="margin-top:8px">
+          <div id="longVideoBody" style="margin-top: 8px">
             <p class="small">
-              One or more videos you added are longer than 30 minutes. These files are likely to be larger than the target size even after aggressive compression.
+              One or more videos you added are longer than 30 minutes. These
+              files are likely to be larger than the target size even after
+              aggressive compression.
             </p>
-            <div id="longVideoList" style="max-height:180px; overflow:auto; margin-top:6px; color:var(--muted);"></div>
-            <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px">
+            <div
+              id="longVideoList"
+              style="
+                max-height: 180px;
+                overflow: auto;
+                margin-top: 6px;
+                color: var(--muted);
+              "
+            ></div>
+            <div
+              style="
+                display: flex;
+                justify-content: flex-end;
+                gap: 8px;
+                margin-top: 12px;
+              "
+            >
               <button id="longVideoIgnore" class="btn">Continue anyway</button>
             </div>
           </div>
