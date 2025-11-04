@@ -151,13 +151,6 @@ app.whenReady().then(() => {
             { role: "quit" },
           ],
         },
-        // Window menu
-        { role: "windowMenu" },
-        // Help fallback
-        {
-          role: "help",
-          submenu: [{ label: "Learn More", click: () => {} }],
-        },
       ];
       const menu = Menu.buildFromTemplate(template);
       Menu.setApplicationMenu(menu);
