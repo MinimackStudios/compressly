@@ -186,7 +186,7 @@ body.has-custom-titlebar .bg-blobs {
 }
 .titlebar-right {
   display: flex;
-  gap: 6px;
+  gap: 4px;
   align-items: center;
 }
 
@@ -203,12 +203,13 @@ body.has-custom-titlebar .bg-blobs {
   background: transparent;
   border: 0;
   color: var(--muted);
-  width: 36px;
-  height: 28px;
-  display: flex;
+  width: 48px; /* match the larger close button for consistency */
+  height: 36px; /* increased tappable area */
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
+  border-radius: 6px; /* rounded corners for non-edge buttons */
+  font-size: 15px;
   cursor: pointer;
 }
 .win-btn:hover {
@@ -220,6 +221,28 @@ body.has-custom-titlebar .bg-blobs {
 }
 .win-btn.close:hover {
   background: rgba(255, 100, 100, 0.12);
+}
+
+/* Make the close button larger and pull it flush to the window edge
+   without changing the titlebar's overall padding. We apply a negative
+   right margin on the right-controls container so the last button can
+   visually reach the window edge, and increase the close button's
+   tappable area so it's easier to hit. */
+.titlebar-right {
+  /* counteract the titlebar's right padding so controls can extend fully */
+  margin-right: -12px;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.win-btn.close {
+  width: 48px;
+  height: 36px;
+  font-size: 15px;
+  border-radius: 6px 0 0 6px; /* keep the inner corner rounded */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Keep titlebar looking good when in dark mode */
