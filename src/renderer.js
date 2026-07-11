@@ -961,6 +961,17 @@ const IMAGE_EXTS = [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tiff"];
 const VIDEO_EXTS = [".mp4", ".mov", ".mkv", ".avi", ".webm", ".flv", ".wmv"];
 const AUDIO_EXTS = [".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".opus"];
 
+// File.path was removed by Electron 32. Keep the old-property fallback so
+// development with older Electron versions continues to work.
+function getLocalFilePath(file) {
+  try {
+    if (window.electronAPI && window.electronAPI.getPathForFile) {
+      return window.electronAPI.getPathForFile(file);
+    }
+  } catch (e) {}
+  return file && file.path;
+}
+
 // Theme initialization
 const themeToggle = document.getElementById("themeToggle");
 function applyTheme(dark) {
@@ -1112,7 +1123,8 @@ if (dropArea) {
     if (ev.dataTransfer && ev.dataTransfer.files) {
       for (const f of ev.dataTransfer.files) {
         try {
-          const p = f.path;
+          const p = getLocalFilePath(f);
+          if (!p) throw new Error("Could not resolve dropped file path");
           const ext = require("path").extname(p).toLowerCase();
           if (
             IMAGE_EXTS.includes(ext) ||

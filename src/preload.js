@@ -16,6 +16,7 @@ try {
         ipcRenderer.invoke("save-dialog", defaultPath),
       getFfmpegPath: () => ipcRenderer.invoke("get-ffmpeg-path"),
       getFfprobePath: () => ipcRenderer.invoke("get-ffprobe-path"),
+      getPathForFile: (file) => electron.webUtils.getPathForFile(file),
       // titlebar preference (Windows-only feature)
       getUseCustomTitlebar: () => ipcRenderer.invoke("get-use-custom-titlebar"),
       applyTitlebarSetting: (enabled) =>
@@ -41,6 +42,7 @@ try {
           electron.ipcRenderer.invoke("save-dialog", defaultPath),
         getFfmpegPath: () => electron.ipcRenderer.invoke("get-ffmpeg-path"),
         getFfprobePath: () => electron.ipcRenderer.invoke("get-ffprobe-path"),
+        getPathForFile: (file) => electron.webUtils.getPathForFile(file),
         // titlebar preference (Windows-only feature)
         getUseCustomTitlebar: () =>
           electron.ipcRenderer.invoke("get-use-custom-titlebar"),

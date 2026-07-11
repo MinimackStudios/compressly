@@ -233,43 +233,31 @@ ipcMain.on("set-lite-mode", (event, enabled) => {
 // the packaged ffmpeg-static module (if installed) or the PATH.
 ipcMain.handle("get-ffmpeg-path", async () => {
   try {
-    // Common Homebrew locations for Intel and Apple Silicon
-    const candidates = [
-      "/usr/local/bin/ffmpeg",
-      "/opt/homebrew/bin/ffmpeg",
-      // also check in /usr/bin as a fallback
-      "/usr/bin/ffmpeg",
-    ];
-    for (const p of candidates) {
-      try {
-        if (fs.existsSync(p)) return p;
-      } catch (e) {}
-    }
-
-    // Check for bundled ffmpeg shipped as an extraResource by the builder.
-    // On macOS, prefer arch-specific bundles under ffmpeg/darwin/<arch>/.
-    // Legacy apps may still place a single binary at ffmpeg/darwin/ffmpeg.
+    // Prefer the bundled binary in both packaged builds and npm start. In a
+    // development run, process.resourcesPath points at Electron itself, not
+    // this application's build/ffmpeg directory.
     try {
-      const resBase = process && process.resourcesPath;
-      if (resBase) {
+      const resourceRoots = [
+        process && process.resourcesPath && path.join(process.resourcesPath, "ffmpeg"),
+        !app.isPackaged && path.join(app.getAppPath(), "build", "ffmpeg"),
+      ].filter(Boolean);
+      for (const root of resourceRoots) {
         const bundledCandidates = {
-          win32: [path.join(resBase, "ffmpeg", "win32", "ffmpeg.exe")],
+          win32: [path.join(root, "win32", "ffmpeg.exe")],
           darwin:
             process.arch === "arm64"
-              ? [path.join(resBase, "ffmpeg", "darwin", "arm64", "ffmpeg")]
+              ? [path.join(root, "darwin", "arm64", "ffmpeg")]
               : [
-                  path.join(resBase, "ffmpeg", "darwin", "x64", "ffmpeg"),
-                  path.join(resBase, "ffmpeg", "darwin", "ffmpeg"),
+                  path.join(root, "darwin", "x64", "ffmpeg"),
+                  path.join(root, "darwin", "ffmpeg"),
                 ],
         };
-        const candidates = bundledCandidates[process.platform] || [];
-        for (const b of candidates) {
-          if (b && fs.existsSync(b)) {
-            try {
-              if (process.platform !== "win32") fs.chmodSync(b, 0o755);
-            } catch (e) {}
-            return b;
-          }
+        for (const candidate of bundledCandidates[process.platform] || []) {
+          if (!fs.existsSync(candidate)) continue;
+          try {
+            if (process.platform !== "win32") fs.chmodSync(candidate, 0o755);
+          } catch (e) {}
+          return candidate;
         }
       }
     } catch (e) {}
@@ -309,6 +297,17 @@ ipcMain.handle("get-ffmpeg-path", async () => {
       }
     } catch (e) {}
 
+    // Common Homebrew locations for Intel and Apple Silicon.
+    for (const p of [
+      "/usr/local/bin/ffmpeg",
+      "/opt/homebrew/bin/ffmpeg",
+      "/usr/bin/ffmpeg",
+    ]) {
+      try {
+        if (fs.existsSync(p)) return p;
+      } catch (e) {}
+    }
+
     // Last resort: rely on ffmpeg in PATH (let fluent-ffmpeg find it)
     return "ffmpeg";
   } catch (e) {
@@ -320,40 +319,30 @@ ipcMain.handle("get-ffmpeg-path", async () => {
 // separately, and fluent-ffmpeg requires ffprobe to probe files.
 ipcMain.handle("get-ffprobe-path", async () => {
   try {
-    const candidates = [
-      "/usr/local/bin/ffprobe",
-      "/opt/homebrew/bin/ffprobe",
-      "/usr/bin/ffprobe",
-    ];
-    for (const p of candidates) {
-      try {
-        if (fs.existsSync(p)) return p;
-      } catch (e) {}
-    }
-
-    // Check for bundled ffprobe shipped in resources alongside ffmpeg.
-    // On macOS, prefer arch-specific bundles under ffmpeg/darwin/<arch>/.
+    // Match the ffmpeg resolver so npm start and packaged builds both use the
+    // FFprobe binary shipped with this app.
     try {
-      const resBase = process && process.resourcesPath;
-      if (resBase) {
+      const resourceRoots = [
+        process && process.resourcesPath && path.join(process.resourcesPath, "ffmpeg"),
+        !app.isPackaged && path.join(app.getAppPath(), "build", "ffmpeg"),
+      ].filter(Boolean);
+      for (const root of resourceRoots) {
         const bundledProbeCandidates = {
-          win32: [path.join(resBase, "ffmpeg", "win32", "ffprobe.exe")],
+          win32: [path.join(root, "win32", "ffprobe.exe")],
           darwin:
             process.arch === "arm64"
-              ? [path.join(resBase, "ffmpeg", "darwin", "arm64", "ffprobe")]
+              ? [path.join(root, "darwin", "arm64", "ffprobe")]
               : [
-                  path.join(resBase, "ffmpeg", "darwin", "x64", "ffprobe"),
-                  path.join(resBase, "ffmpeg", "darwin", "ffprobe"),
+                  path.join(root, "darwin", "x64", "ffprobe"),
+                  path.join(root, "darwin", "ffprobe"),
                 ],
         };
-        const candidates = bundledProbeCandidates[process.platform] || [];
-        for (const bp of candidates) {
-          if (bp && fs.existsSync(bp)) {
-            try {
-              if (process.platform !== "win32") fs.chmodSync(bp, 0o755);
-            } catch (e) {}
-            return bp;
-          }
+        for (const candidate of bundledProbeCandidates[process.platform] || []) {
+          if (!fs.existsSync(candidate)) continue;
+          try {
+            if (process.platform !== "win32") fs.chmodSync(candidate, 0o755);
+          } catch (e) {}
+          return candidate;
         }
       }
     } catch (e) {}
@@ -383,6 +372,16 @@ ipcMain.handle("get-ffprobe-path", async () => {
         if (fs.existsSync(p)) return p;
       }
     } catch (e) {}
+
+    for (const p of [
+      "/usr/local/bin/ffprobe",
+      "/opt/homebrew/bin/ffprobe",
+      "/usr/bin/ffprobe",
+    ]) {
+      try {
+        if (fs.existsSync(p)) return p;
+      } catch (e) {}
+    }
 
     // Last resort: let fluent-ffmpeg fall back to 'ffprobe' on PATH
     return "ffprobe";
