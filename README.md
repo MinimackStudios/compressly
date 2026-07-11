@@ -29,6 +29,14 @@ To compile a production build:
    `npm run build`
 2. Your packaged app will be ready in the `dist` folder
 
+### macOS arm64 note
+
+- The mac build now targets both `x64` and `arm64`.
+- For bundled FFmpeg on Apple Silicon, place binaries at:
+   - `build/ffmpeg/darwin/arm64/ffmpeg`
+   - `build/ffmpeg/darwin/arm64/ffprobe`
+- Existing Intel binaries can remain at `build/ffmpeg/darwin/ffmpeg` and `build/ffmpeg/darwin/ffprobe` (or under `build/ffmpeg/darwin/x64/`).
+
 ## Website
 
 The Compressly landing page is hosted at [compressly.github.io](https://compressly.github.io)  

@@ -1,0 +1,178 @@
+{
+  "fill-specializations" : [
+    {
+      "value" : {
+        "linear-gradient" : [
+          "display-p3:0.92083,0.91250,0.96569,1.00000",
+          "display-p3:0.93114,0.95412,0.95705,1.00000"
+        ]
+      }
+    },
+    {
+      "appearance" : "dark",
+      "value" : {
+        "linear-gradient" : [
+          "display-p3:0.07256,0.08073,0.18161,1.00000",
+          "display-p3:0.05416,0.07028,0.13016,1.00000"
+        ]
+      }
+    }
+  ],
+  "groups" : [
+    {
+      "blur-material" : null,
+      "layers" : [
+        {
+          "image-name" : "Compress!.svg",
+          "name" : "Compress!",
+          "position" : {
+            "scale" : 1.36,
+            "translation-in-points" : [
+              0.2016161862970307,
+              -199
+            ]
+          }
+        },
+        {
+          "image-name" : "Rectangle 1.svg",
+          "name" : "Rectangle 1",
+          "position" : {
+            "scale" : 1.18,
+            "translation-in-points" : [
+              -0.2043838137029752,
+              -206.59680000000003
+            ]
+          }
+        }
+      ],
+      "lighting" : "individual",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.6
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.25
+      }
+    },
+    {
+      "blur-material" : null,
+      "layers" : [
+        {
+          "fill" : {
+            "linear-gradient" : [
+              "display-p3:0.45411,0.24282,0.89634,1.00000",
+              "display-p3:0.30799,0.27497,0.86467,1.00000"
+            ],
+            "orientation" : {
+              "start" : {
+                "x" : 0,
+                "y" : 0.5
+              },
+              "stop" : {
+                "x" : 1,
+                "y" : 0.500000000000001
+              }
+            }
+          },
+          "image-name" : "progressbarfill.svg",
+          "name" : "progressbarfill",
+          "position" : {
+            "scale" : 1.2,
+            "translation-in-points" : [
+              -169,
+              76
+            ]
+          }
+        },
+        {
+          "fill-specializations" : [
+            {
+              "value" : {
+                "solid" : "display-p3:0.87092,0.87480,0.92101,1.00000"
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "solid" : "display-p3:0.17647,0.17255,0.22353,1.00000"
+              }
+            }
+          ],
+          "glass" : true,
+          "image-name" : "progressbar.svg",
+          "name" : "progressbar",
+          "position" : {
+            "scale" : 1.2,
+            "translation-in-points" : [
+              0,
+              76
+            ]
+          }
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.6
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.3
+      }
+    },
+    {
+      "layers" : [
+        {
+          "fill" : {
+            "solid" : "display-p3:0.96783,0.36583,0.36036,1.00000"
+          },
+          "image-name" : "trash 3.svg",
+          "name" : "trash 3",
+          "position" : {
+            "scale" : 0.26,
+            "translation-in-points" : [
+              191.42816737241037,
+              300
+            ]
+          }
+        },
+        {
+          "fill-specializations" : [
+            {
+              "value" : {
+                "solid" : "display-p3:0.23778,0.24031,0.24031,1.00000"
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "solid" : "display-p3:0.35581,0.34965,0.45728,1.00000"
+              }
+            }
+          ],
+          "image-name" : "cross-svgrepo-com.svg",
+          "name" : "cross-svgrepo-com",
+          "position" : {
+            "scale" : 0.22,
+            "translation-in-points" : [
+              -193,
+              300
+            ]
+          }
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.6
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.35
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : "shared"
+  }
+}

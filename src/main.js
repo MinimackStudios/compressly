@@ -44,10 +44,9 @@ function createWindow() {
     minHeight: 500,
     show: false,
     title: "Compressly",
-    // Use the macOS icns when running on macOS; otherwise fall back to PNG
-    icon: isMac
-      ? path.join(__dirname, "compressly.icns")
-      : path.join(__dirname, "compressly.png"),
+    // On Windows, provide an explicit app icon. On macOS, rely on the app
+    // bundle icon configured by the packager instead of a runtime .icns file.
+    icon: isWindows ? path.join(__dirname, "compressly.ico") : undefined,
     autoHideMenuBar: true,
     backgroundColor: "#f6f8fa",
     // If we're on macOS, use the native titlebar. On Windows allow the
@@ -99,24 +98,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-  // On macOS set a friendly app name and dock icon where possible
-  if (process.platform === "darwin") {
-    try {
-      app.setName("Compressly");
-      // If an icns file exists next to the app sources, use it for the dock
-      const dockIcon = path.join(__dirname, "compressly.icns");
-      if (
-        fs.existsSync(dockIcon) &&
-        app.dock &&
-        typeof app.dock.setIcon === "function"
-      ) {
-        try {
-          app.dock.setIcon(dockIcon);
-        } catch (e) {}
-      }
-    } catch (e) {}
-  }
-  // Apply stored theme preference (if any) so the native titlebar matches
+  // Apply stored theme preference (if any) so the native titlebar matches.
   try {
     const saved = store.get("theme");
     if (saved === "dark" || saved === "light" || saved === "system") {
@@ -125,6 +107,13 @@ app.whenReady().then(() => {
       } catch (e) {}
     }
   } catch (e) {}
+
+  // On macOS set a friendly app name.
+  if (process.platform === "darwin") {
+    try {
+      app.setName("Compressly");
+    } catch (e) {}
+  }
 
   createWindow();
   // On macOS, provide a standard application menu; on other platforms hide it
@@ -258,20 +247,29 @@ ipcMain.handle("get-ffmpeg-path", async () => {
     }
 
     // Check for bundled ffmpeg shipped as an extraResource by the builder.
-    // When packaged the files are copied to <app>/resources/ffmpeg/<platform>/*
+    // On macOS, prefer arch-specific bundles under ffmpeg/darwin/<arch>/.
+    // Legacy apps may still place a single binary at ffmpeg/darwin/ffmpeg.
     try {
       const resBase = process && process.resourcesPath;
       if (resBase) {
-        const bundled = {
-          win32: path.join(resBase, "ffmpeg", "win32", "ffmpeg.exe"),
-          darwin: path.join(resBase, "ffmpeg", "darwin", "ffmpeg"),
+        const bundledCandidates = {
+          win32: [path.join(resBase, "ffmpeg", "win32", "ffmpeg.exe")],
+          darwin:
+            process.arch === "arm64"
+              ? [path.join(resBase, "ffmpeg", "darwin", "arm64", "ffmpeg")]
+              : [
+                  path.join(resBase, "ffmpeg", "darwin", "x64", "ffmpeg"),
+                  path.join(resBase, "ffmpeg", "darwin", "ffmpeg"),
+                ],
         };
-        const b = bundled[process.platform];
-        if (b && fs.existsSync(b)) {
-          try {
-            if (process.platform !== "win32") fs.chmodSync(b, 0o755);
-          } catch (e) {}
-          return b;
+        const candidates = bundledCandidates[process.platform] || [];
+        for (const b of candidates) {
+          if (b && fs.existsSync(b)) {
+            try {
+              if (process.platform !== "win32") fs.chmodSync(b, 0o755);
+            } catch (e) {}
+            return b;
+          }
         }
       }
     } catch (e) {}
@@ -333,20 +331,29 @@ ipcMain.handle("get-ffprobe-path", async () => {
       } catch (e) {}
     }
 
-    // Check for bundled ffprobe shipped in resources alongside ffmpeg
+    // Check for bundled ffprobe shipped in resources alongside ffmpeg.
+    // On macOS, prefer arch-specific bundles under ffmpeg/darwin/<arch>/.
     try {
       const resBase = process && process.resourcesPath;
       if (resBase) {
-        const bundledProbe = {
-          win32: path.join(resBase, "ffmpeg", "win32", "ffprobe.exe"),
-          darwin: path.join(resBase, "ffmpeg", "darwin", "ffprobe"),
+        const bundledProbeCandidates = {
+          win32: [path.join(resBase, "ffmpeg", "win32", "ffprobe.exe")],
+          darwin:
+            process.arch === "arm64"
+              ? [path.join(resBase, "ffmpeg", "darwin", "arm64", "ffprobe")]
+              : [
+                  path.join(resBase, "ffmpeg", "darwin", "x64", "ffprobe"),
+                  path.join(resBase, "ffmpeg", "darwin", "ffprobe"),
+                ],
         };
-        const bp = bundledProbe[process.platform];
-        if (bp && fs.existsSync(bp)) {
-          try {
-            if (process.platform !== "win32") fs.chmodSync(bp, 0o755);
-          } catch (e) {}
-          return bp;
+        const candidates = bundledProbeCandidates[process.platform] || [];
+        for (const bp of candidates) {
+          if (bp && fs.existsSync(bp)) {
+            try {
+              if (process.platform !== "win32") fs.chmodSync(bp, 0o755);
+            } catch (e) {}
+            return bp;
+          }
         }
       }
     } catch (e) {}

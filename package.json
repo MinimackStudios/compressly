@@ -1,6 +1,6 @@
 {
   "name": "compressly",
-  "version": "1.1.5",
+  "version": "1.2.0a",
   "description": "Electron app to compress videos, images & audio",
   "main": "src/main.js",
   "scripts": {
@@ -11,17 +11,16 @@
   "author": "Minimack Studios",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^26.0.0",
-    "electron-builder": "^24.0.0"
+    "electron": "^43.1.0",
+    "electron-builder": "^26.15.3"
   },
   "dependencies": {
-    "ffmpeg-static": "^5.0.0",
-    "fluent-ffmpeg": "^2.1.2",
-    "sharp": "^0.32.4",
     "electron-store": "^8.1.0",
-    "file-type": "^18.0.0"
-  }
-  ,
+    "ffmpeg-static": "^5.0.0",
+    "file-type": "^22.0.1",
+    "fluent-ffmpeg": "^2.1.2",
+    "sharp": "^0.32.4"
+  },
   "build": {
     "productName": "Compressly",
     "appId": "com.compressly.app",
@@ -32,30 +31,41 @@
       "output": "dist"
     },
     "win": {
-      "target": ["nsis"],
+      "target": [
+        "nsis"
+      ],
       "icon": "src/compressly.ico",
       "extraResources": [
         {
           "from": "build/ffmpeg/win32",
           "to": "ffmpeg/win32",
-          "filter": ["**/*"]
+          "filter": [
+            "**/*"
+          ]
         }
       ]
     },
     "mac": {
-      "icon": "src/compressly.icns",
+      "icon": "src/compressly.icon",
       "target": [
-        { "target": "dmg", "arch": ["x64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
       ],
       "extraResources": [
         {
           "from": "build/ffmpeg/darwin",
           "to": "ffmpeg/darwin",
-          "filter": ["**/*"]
+          "filter": [
+            "**/*"
+          ]
         }
       ]
     },
-    
     "dmg": {
       "icon": null
     },
@@ -65,5 +75,10 @@
       "allowElevation": true,
       "allowToChangeInstallationDirectory": true
     }
+  },
+  "allowScripts": {
+    "electron-winstaller@5.4.0": true,
+    "ffmpeg-static@5.2.0": true,
+    "sharp@0.32.6": true
   }
 }
