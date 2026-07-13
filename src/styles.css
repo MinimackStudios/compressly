@@ -63,7 +63,9 @@ body.dark {
   top: 38%;
   background: radial-gradient(circle at 50% 40%, #06b6a4, #10b981);
   animation: blobDrift 30s ease-in-out infinite;
-  animation-delay: 6s;
+  /* Start mid-cycle so entering Smart mode cannot expose the brighter
+     pre-animation state and then abruptly drop its opacity six seconds later. */
+  animation-delay: -6s;
 }
 .bg-blobs .b3 {
   width: 260px;
@@ -72,7 +74,7 @@ body.dark {
   bottom: -80px;
   background: radial-gradient(circle at 60% 60%, #f97316, #f59e0b);
   animation: blobDrift 26s ease-in-out infinite;
-  animation-delay: 10s;
+  animation-delay: -10s;
 }
 @keyframes blobDrift {
   0% {
@@ -104,6 +106,10 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
+}
+.app {
+  background-color: transparent;
+  transition: background-color 260ms ease;
 }
 /* Smooth theme transition for light/dark toggles */
 html,
@@ -275,7 +281,7 @@ body.dark .win-btn {
   font-size: 22px;
   font-weight: 700;
   color: var(--accent);
-  background: linear-gradient(90deg, #4f46e5, #ff39fd);
+  background: linear-gradient(90deg, #4f46e5, #7c3aed);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -1719,6 +1725,18 @@ body:not(.dark) #detailCancel:hover {
   filter: none !important;
   pointer-events: auto !important;
 }
+.brand-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.brand-row .smart-launch-btn {
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-size: 10px;
+  line-height: 1.2;
+  box-shadow: 0 4px 12px rgba(79, 70, 229, .2);
+}
 
 /* Smart workspace layout refinement */
 .smart-blob { display: none; }
@@ -2157,6 +2175,9 @@ body.smart-mode.smart-exiting .smart-hero {
 body.smart-mode:not(.smart-exiting) .container {
   animation: smartWorkspaceEnter 240ms both ease-out;
 }
+body.smart-mode:not(.smart-exiting) .bg-blobs {
+  animation: smartBackgroundEnter 260ms both ease-out;
+}
 body.smart-mode:not(.smart-exiting) .smart-hero {
   animation: smartElementRise 360ms 20ms both cubic-bezier(.2,.9,.28,1);
 }
@@ -2182,6 +2203,10 @@ body.standard-entering .container {
   from { opacity: 0; transform: scale(.992); }
   to { opacity: 1; transform: scale(1); }
 }
+@keyframes smartBackgroundEnter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
 @keyframes smartElementRise {
   from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
@@ -2193,4 +2218,46 @@ body.standard-entering .container {
 @keyframes standardWorkspaceIn {
   from { opacity: 0; transform: scale(.992); }
   to { opacity: 1; transform: scale(1); }
+}
+
+/* Tight preference cluster: quality anchors the left, toggles form a 2×2 grid. */
+body.smart-mode .smart-options {
+  width: min(100%, 720px);
+  grid-template-columns: 230px 220px 220px;
+  grid-template-areas:
+    "quality resolution fps"
+    "quality metadata audio";
+  gap: 7px 14px;
+  justify-content: start;
+  align-items: center;
+}
+body.smart-mode .smart-quality-field {
+  grid-area: quality;
+  width: 230px;
+  align-self: center;
+}
+body.smart-mode .smart-resolution { grid-area: resolution; }
+body.smart-mode .smart-fps { grid-area: fps; }
+body.smart-mode .smart-audio { grid-area: audio; }
+body.smart-mode .smart-metadata { grid-area: metadata; }
+body.smart-mode .smart-toggle {
+  width: 220px;
+  min-height: 38px;
+  padding: 2px 0;
+}
+@media (max-width: 800px) {
+  body.smart-mode .smart-options {
+    width: 100%;
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "quality quality"
+      "resolution fps"
+      "metadata audio";
+  }
+  body.smart-mode .smart-quality-field,
+  body.smart-mode .smart-toggle { width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app { transition: none; }
+  body.smart-mode:not(.smart-exiting) .bg-blobs { animation: none; }
 }

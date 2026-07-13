@@ -85,6 +85,22 @@ function getSmartQualitySettings(profile) {
   return profiles[profile] || profiles.balanced;
 }
 
+function getMediaDetailCapabilities(kind) {
+  const normalized = String(kind || "").toLowerCase();
+  const isImage = normalized === "image";
+  const isVideo = normalized === "video";
+  const isAudio = normalized === "audio";
+
+  return {
+    duration: isVideo || isAudio,
+    dimensions: isVideo || isImage,
+    fps: isVideo,
+    videoCodec: isVideo,
+    audio: isVideo || isAudio,
+    resolutionSetting: isVideo || isImage,
+  };
+}
+
 module.exports = {
   getImageOutputExtension,
   buildAvailableOutputPath,
@@ -98,4 +114,5 @@ module.exports = {
   isValidFps,
   selectPreset,
   getSmartQualitySettings,
+  getMediaDetailCapabilities,
 };

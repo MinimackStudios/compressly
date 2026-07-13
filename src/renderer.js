@@ -555,7 +555,12 @@ const SETTINGS_KEYS = {
 
 const TARGET_PRESETS = [1, 5, 10, 25, 50, 100];
 const FPS_PRESETS = [24, 25, 30, 50, 60, 120];
-const { selectPreset, isValidTargetSize, isValidFps } = require("./media-utils");
+const {
+  selectPreset,
+  isValidTargetSize,
+  isValidFps,
+  getMediaDetailCapabilities,
+} = require("./media-utils");
 
 function persistSetting(key, value) {
   try {
@@ -1575,6 +1580,8 @@ function updateDetailedView() {
   const settings = state.settingsSnapshot || {};
   const processing = state.processingDetails || {};
   const result = state.resultDetails || {};
+  const mediaKind = source.kind || settings.mediaKind || mediaKindForPath(detailedFilePath);
+  const detailCapabilities = getMediaDetailCapabilities(mediaKind);
   let liveOutputBytes = result.outputBytes;
   try {
     if (state.outPath && fs.existsSync(state.outPath))
@@ -1598,29 +1605,75 @@ function updateDetailedView() {
     liveOutputBytes === undefined ? "—" : formatBytes(liveOutputBytes);
   document.getElementById("detailAttempt").textContent = processing.stage || "—";
 
-  setDetailRows("detailSource", [
-    ["Type", source.kind || mediaKindForPath(detailedFilePath)],
+  const sourceRows = [
+    ["Type", mediaKind],
     ["Original size", formatBytes(source.originalBytes)],
-    ["Duration", source.duration === undefined ? "Unavailable" : formatDuration(source.duration)],
-    ["Dimensions", source.width && source.height ? `${source.width} × ${source.height}` : "Unavailable"],
-    ["Source FPS", source.fps],
-    ["Video codec", source.videoCodec || (source.kind === "Image" ? source.codec : null)],
-    ["Audio codec", source.audioCodec],
-    ["Audio bitrate", source.audioBitrateKbps ? `${source.audioBitrateKbps} kbps` : null],
-  ]);
+  ];
+  if (detailCapabilities.duration)
+    sourceRows.push([
+      "Duration",
+      source.duration === undefined ? "Unavailable" : formatDuration(source.duration),
+    ]);
+  if (detailCapabilities.dimensions)
+    sourceRows.push([
+      "Dimensions",
+      source.width && source.height ? `${source.width} × ${source.height}` : "Unavailable",
+    ]);
+  if (detailCapabilities.fps) sourceRows.push(["Source FPS", source.fps]);
+  if (detailCapabilities.videoCodec)
+    sourceRows.push(["Video codec", source.videoCodec]);
+  if (mediaKind === "Image") sourceRows.push(["Image format", source.codec]);
+  if (detailCapabilities.audio) {
+    sourceRows.push(["Audio codec", source.audioCodec]);
+    sourceRows.push([
+      "Audio bitrate",
+      source.audioBitrateKbps ? `${source.audioBitrateKbps} kbps` : null,
+    ]);
+  }
+  setDetailRows("detailSource", sourceRows);
   const smartSettings = settings.mode === "Smart Compression";
-  setDetailRows("detailSettings", [
+  const settingRows = [
     ["Mode", settings.mode || "Target Size"],
     ["Target size", smartSettings ? "Quality based" : settings.targetMB ? `${settings.targetMB} MB` : "Not started"],
     ["Quality", smartSettings ? settings.quality : null],
-    ["FPS", smartSettings ? (settings.retainFps ? "Retain source" : "Optimize") : settings.mediaKind === "Video" ? settings.fps : "Not applicable"],
-    ["Resolution", smartSettings ? (settings.retainResolution ? "Retain source" : "Optimize") : settings.mediaKind === "Video" ? settings.resolution : "Not applicable"],
-    ["Audio", smartSettings ? (settings.preserveAudio ? "Preserve quality" : "Optimize") : settings.mediaKind === "Video" ? settings.priority : "Not applicable"],
-    ["Metadata", smartSettings ? (settings.stripMetadata ? "Remove" : "Preserve") : "Not applicable"],
-    ["Output format", processing.outputFormat],
-    ["Video quality", smartSettings ? processing.videoBitrateKbps : processing.videoBitrateKbps ? `${processing.videoBitrateKbps} kbps` : null],
-    ["Audio bitrate", processing.audioBitrateKbps ? `${processing.audioBitrateKbps} kbps` : null],
-  ]);
+  ];
+  if (detailCapabilities.fps)
+    settingRows.push([
+      "FPS",
+      smartSettings ? (settings.retainFps ? "Retain source" : "Optimize") : settings.fps,
+    ]);
+  if (detailCapabilities.resolutionSetting && (smartSettings || mediaKind === "Video"))
+    settingRows.push([
+      "Resolution",
+      smartSettings
+        ? (settings.retainResolution ? "Retain source" : "Optimize")
+        : settings.resolution,
+    ]);
+  if (detailCapabilities.audio && (smartSettings || mediaKind === "Video"))
+    settingRows.push([
+      "Audio",
+      smartSettings
+        ? (settings.preserveAudio ? "Preserve quality" : "Optimize")
+        : settings.priority,
+    ]);
+  if (smartSettings)
+    settingRows.push(["Metadata", settings.stripMetadata ? "Remove" : "Preserve"]);
+  settingRows.push(["Output format", processing.outputFormat]);
+  if (detailCapabilities.videoCodec)
+    settingRows.push([
+      "Video quality",
+      smartSettings
+        ? processing.videoBitrateKbps
+        : processing.videoBitrateKbps
+          ? `${processing.videoBitrateKbps} kbps`
+          : null,
+    ]);
+  if (detailCapabilities.audio)
+    settingRows.push([
+      "Audio bitrate",
+      processing.audioBitrateKbps ? `${processing.audioBitrateKbps} kbps` : null,
+    ]);
+  setDetailRows("detailSettings", settingRows);
   const originalBytes = source.originalBytes;
   const targetResult =
     state.status === "done-oversize"

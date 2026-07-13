@@ -14,6 +14,7 @@ const {
   isValidFps,
   selectPreset,
   getSmartQualitySettings,
+  getMediaDetailCapabilities,
 } = require("../src/media-utils");
 const { selectReleaseAsset, verifyAssetDigest } = require("../src/update-utils");
 
@@ -87,4 +88,20 @@ test("smart compression profiles become progressively smaller", () => {
   assert.ok(balanced.videoCrf < compact.videoCrf);
   assert.ok(fidelity.audioBitrateKbps > compact.audioBitrateKbps);
   assert.deepEqual(getSmartQualitySettings("unknown"), balanced);
+});
+
+test("detail capabilities keep video-only information on videos", () => {
+  const video = getMediaDetailCapabilities("Video");
+  const image = getMediaDetailCapabilities("Image");
+  const audio = getMediaDetailCapabilities("Audio");
+
+  assert.equal(video.fps, true);
+  assert.equal(video.videoCodec, true);
+  assert.equal(image.fps, false);
+  assert.equal(image.videoCodec, false);
+  assert.equal(image.dimensions, true);
+  assert.equal(audio.fps, false);
+  assert.equal(audio.videoCodec, false);
+  assert.equal(audio.audio, true);
+  assert.equal(audio.duration, true);
 });

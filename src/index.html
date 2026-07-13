@@ -69,7 +69,12 @@
           "
         >
           <div>
-            <div class="brand">Compressly</div>
+            <div class="brand-row">
+              <div class="brand">Compressly</div>
+              <button id="smartModeBtn" class="btn smart-launch-btn" type="button">
+                Smart <span aria-hidden="true">✦</span>
+              </button>
+            </div>
             <div class="subtitle">
               Compress images, videos & audio without sacrificing too much
               quality
@@ -96,9 +101,6 @@
               style="padding: 8px 10px; font-weight: 600"
             >
               About
-            </button>
-            <button id="smartModeBtn" class="btn smart-launch-btn" type="button">
-              Smart <span aria-hidden="true">✦</span>
             </button>
           </div>
         </div>
@@ -191,10 +193,10 @@
                 <option value="compact">Smaller file</option>
               </select>
             </label>
-            <label class="smart-toggle"><input id="smartRetainResolution" type="checkbox" checked /><span></span><div><strong>Retain resolution</strong><small>Keep original dimensions</small></div></label>
-            <label class="smart-toggle"><input id="smartRetainFps" type="checkbox" checked /><span></span><div><strong>Retain FPS</strong><small>Preserve motion cadence</small></div></label>
-            <label class="smart-toggle"><input id="smartPreserveAudio" type="checkbox" checked /><span></span><div><strong>Preserve audio</strong><small>Favor source sound quality</small></div></label>
-            <label class="smart-toggle"><input id="smartStripMetadata" type="checkbox" checked /><span></span><div><strong>Strip metadata</strong><small>Remove unnecessary data</small></div></label>
+            <label class="smart-toggle smart-resolution"><input id="smartRetainResolution" type="checkbox" checked /><span></span><div><strong>Retain resolution</strong><small>Keep original dimensions</small></div></label>
+            <label class="smart-toggle smart-fps"><input id="smartRetainFps" type="checkbox" checked /><span></span><div><strong>Retain FPS</strong><small>Preserve motion cadence</small></div></label>
+            <label class="smart-toggle smart-audio"><input id="smartPreserveAudio" type="checkbox" checked /><span></span><div><strong>Preserve audio</strong><small>Favor source sound quality</small></div></label>
+            <label class="smart-toggle smart-metadata"><input id="smartStripMetadata" type="checkbox" checked /><span></span><div><strong>Strip metadata</strong><small>Remove unnecessary data</small></div></label>
           </div>
         </section>
 
