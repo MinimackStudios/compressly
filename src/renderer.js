@@ -374,7 +374,14 @@ function selectReleaseAsset(assets) {
     const platform =
       (window && window.electronAPI && window.electronAPI.platform) ||
       (typeof process !== "undefined" ? process.platform : "");
-    return require("./update-utils").selectReleaseAsset(assets, platform);
+    const arch =
+      (window && window.electronAPI && window.electronAPI.arch) ||
+      (typeof process !== "undefined" ? process.arch : "");
+    return require("./update-utils").selectReleaseAsset(
+      assets,
+      platform,
+      arch
+    );
   } catch (e) {
     return null;
   }
@@ -415,9 +422,9 @@ async function downloadLatestReleaseFromGitHub() {
       } catch (e) {}
       return;
     }
-    // Prefer platform-appropriate asset (on mac prefer .pkg). Fall back to first asset.
+    // Never fall back to a different platform or CPU architecture.
     const picked = selectReleaseAsset(assets);
-    let asset = picked || (assets && assets[0]) || null;
+    const asset = picked || null;
     const assetUrl = asset && asset.browser_download_url;
     const defaultName =
       asset &&
@@ -911,7 +918,7 @@ try {
               }
               // Select platform-appropriate asset using helper
               const picked = selectReleaseAsset(assets);
-              const asset = picked || (assets && assets[0]) || null;
+              const asset = picked || null;
               const assetUrl = asset && asset.browser_download_url;
               const defaultName =
                 asset && (asset.name || `compressly-${latestTag}.zip`);

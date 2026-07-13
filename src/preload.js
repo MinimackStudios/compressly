@@ -23,6 +23,7 @@ try {
         ipcRenderer.send("apply-titlebar-setting", enabled),
       // platform and dev flags are useful for UI tweaks in renderer
       platform: process.platform,
+      arch: process.arch,
       isDev: !!(
         process &&
         (process.defaultApp || process.env.NODE_ENV === "development")
@@ -50,6 +51,7 @@ try {
           electron.ipcRenderer.send("apply-titlebar-setting", enabled),
         // platform and isDev available to renderer when nodeIntegration is enabled
         platform: process.platform,
+        arch: process.arch,
         isDev: !!(
           process &&
           (process.defaultApp || process.env.NODE_ENV === "development")

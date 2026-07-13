@@ -56,6 +56,34 @@ test("release selection uses platform-appropriate installers", () => {
   assert.equal(selectReleaseAsset(assets, "win32").name, "Compressly.exe");
 });
 
+test("Apple Silicon updates require an arm64 or universal macOS asset", () => {
+  const assets = [
+    { name: "Compressly-2.0.0-x64.dmg" },
+    { name: "Compressly-2.0.0-arm64.zip" },
+    { name: "Compressly-2.0.0-arm64.dmg" },
+  ];
+  assert.equal(
+    selectReleaseAsset(assets, "darwin", "arm64").name,
+    "Compressly-2.0.0-arm64.dmg"
+  );
+  assert.equal(
+    selectReleaseAsset(
+      [{ name: "Compressly-2.0.0-universal.dmg" }],
+      "darwin",
+      "arm64"
+    ).name,
+    "Compressly-2.0.0-universal.dmg"
+  );
+  assert.equal(
+    selectReleaseAsset(
+      [{ name: "Compressly-2.0.0-x64.dmg" }],
+      "darwin",
+      "arm64"
+    ),
+    null
+  );
+});
+
 test("GitHub SHA-256 digests are validated", () => {
   const bytes = Buffer.from("trusted update");
   const digest =

@@ -1,6 +1,6 @@
 const crypto = require("crypto");
 
-function selectReleaseAsset(assets, platform) {
+function selectReleaseAsset(assets, platform, arch) {
   if (!Array.isArray(assets) || assets.length === 0) return null;
   const normalized = assets.map((asset) => ({
     ...asset,
@@ -13,6 +13,36 @@ function selectReleaseAsset(assets, platform) {
       : platform === "win32"
         ? [".exe", ".msi", ".zip"]
         : [".zip", ".exe", ".msi", ".dmg", ".pkg"];
+
+  if (platform === "darwin") {
+    const macAssets = extensions.flatMap((extension) =>
+      normalized.filter((asset) => asset.lname.endsWith(extension))
+    );
+    const isArm64 = (asset) =>
+      /(?:^|[-_.])(?:arm64|aarch64)(?=[-_.]|$)/i.test(asset.lname);
+    const isX64 = (asset) =>
+      /(?:^|[-_.])(?:x64|x86_64|amd64)(?=[-_.]|$)/i.test(asset.lname);
+    const isUniversal = (asset) =>
+      /(?:^|[-_.])universal(?:[-_.]2)?(?=[-_.]|$)/i.test(asset.lname);
+
+    if (arch === "arm64") {
+      return (
+        macAssets.find(isArm64) ||
+        macAssets.find(isUniversal) ||
+        null
+      );
+    }
+    if (arch === "x64") {
+      return (
+        macAssets.find(isX64) ||
+        macAssets.find(isUniversal) ||
+        macAssets.find((asset) => !isArm64(asset)) ||
+        null
+      );
+    }
+    return macAssets[0] || null;
+  }
+
   for (const extension of extensions) {
     const match = normalized.find((asset) => asset.lname.endsWith(extension));
     if (match) return match;
