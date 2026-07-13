@@ -4,10 +4,28 @@ const startBtn = document.getElementById("start");
 const statusEl = document.getElementById("status");
 const targetSizeEl = document.getElementById("targetSize");
 const videoFpsEl = document.getElementById("videoFps");
+const targetSizePresetEl = document.getElementById("targetSizePreset");
+const videoFpsPresetEl = document.getElementById("videoFpsPreset");
+const targetSizeControlEl = document.getElementById("targetSizeControl");
+const videoFpsControlEl = document.getElementById("videoFpsControl");
+const targetCustomCloseEl = document.getElementById("targetCustomClose");
+const fpsCustomCloseEl = document.getElementById("fpsCustomClose");
 const prioritySelectEl = document.getElementById("prioritySelect");
 const targetResolutionEl = document.getElementById("targetResolution");
 const footerInfoEl = document.getElementById("footer-info");
 const clearBtn = document.getElementById("clearList");
+const smartPickBtn = document.getElementById("smartPick");
+const standardModeBtn = document.getElementById("standardModeBtn");
+const smartModeBtn = document.getElementById("smartModeBtn");
+const standardOptionsEl = document.getElementById("standardOptions");
+const smartOptionsEl = document.getElementById("smartOptions");
+const modeDescriptionEl = document.getElementById("modeDescription");
+const smartQualityEl = document.getElementById("smartQuality");
+const smartRetainResolutionEl = document.getElementById("smartRetainResolution");
+const smartRetainFpsEl = document.getElementById("smartRetainFps");
+const smartPreserveAudioEl = document.getElementById("smartPreserveAudio");
+const smartStripMetadataEl = document.getElementById("smartStripMetadata");
+let compressionMode = "standard";
 
 // Window control buttons for custom titlebar (only present in frameless mode)
 const winMinBtn = document.getElementById("win-min");
@@ -18,7 +36,15 @@ const winCloseBtn = document.getElementById("win-close");
 // while a file is compressing. Exceptions are the About, Lite and theme toggle.
 function setGlobalProcessingLock(on) {
   try {
-    const exceptionSelectors = ["#aboutBtn", "#liteBtn", "#themeToggle"];
+    const exceptionSelectors = [
+      "#aboutBtn",
+      "#liteBtn",
+      "#themeToggle",
+      ".file-action-btn.details",
+      "#detailBack",
+      "#detailCancel",
+      "#detailReveal",
+    ];
     // Find all interactive controls
     const controls = Array.from(
       document.querySelectorAll("button, input, select, textarea")
@@ -334,64 +360,10 @@ try {
 // Helper: choose the best release asset for this platform (case-insensitive)
 function selectReleaseAsset(assets) {
   try {
-    if (!Array.isArray(assets) || assets.length === 0) return null;
     const platform =
       (window && window.electronAPI && window.electronAPI.platform) ||
       (typeof process !== "undefined" ? process.platform : "");
-    const list = assets.slice();
-    // Normalize name checks to lowercase for robust matching
-    const norm = (a) => ({
-      ...a,
-      lname: a && a.name ? String(a.name).toLowerCase() : "",
-      url: a && a.browser_download_url,
-    });
-    const normalized = list.map(norm);
-
-    if (platform === "darwin") {
-      // prefer .dmg, then .pkg, then .zip
-      let a = normalized.find((x) => x.lname.endsWith(".dmg"));
-      if (a) return a;
-      a = normalized.find((x) => x.lname.endsWith(".pkg"));
-      if (a) return a;
-      a = normalized.find((x) => x.lname.endsWith(".zip"));
-      if (a) return a;
-      // try substring matches like 'mac' or 'osx'
-      a = normalized.find(
-        (x) => x.lname.includes("mac") || x.lname.includes("osx")
-      );
-      if (a) return a;
-    } else if (platform === "win32") {
-      let a = normalized.find((x) => x.lname.endsWith(".exe"));
-      if (a) return a;
-      a = normalized.find((x) => x.lname.endsWith(".msi"));
-      if (a) return a;
-      a = normalized.find((x) => x.lname.endsWith(".zip"));
-      if (a) return a;
-    } else {
-      // other/unknown: prefer Windows-style installers as a safe default
-      let a = normalized.find((x) => x.lname.endsWith(".exe"));
-      if (a) return a;
-      a = normalized.find((x) => x.lname.endsWith(".msi"));
-      if (a) return a;
-      a = normalized.find((x) => x.lname.endsWith(".zip"));
-      if (a) return a;
-    }
-
-    // As a last attempt, prefer assets that include the platform name anywhere
-    const pf = platform ? String(platform).toLowerCase() : "";
-    if (pf) {
-      const match = normalized.find((x) => x.lname.includes(pf));
-      if (match) return match;
-    }
-
-    // Fallback: prefer any asset that looks like a mac/windows binary by extension
-    const fallback = normalized.find((x) =>
-      x.lname.match(/\.dmg$|\.pkg$|\.zip$|\.exe$|\.msi$/i)
-    );
-    if (fallback) return fallback;
-
-    // Final fallback: first asset
-    return normalized[0] || null;
+    return require("./update-utils").selectReleaseAsset(assets, platform);
   } catch (e) {
     return null;
   }
@@ -496,7 +468,15 @@ async function downloadLatestReleaseFromGitHub() {
     const savePath = path.join(downloadsDir, defaultName);
 
     if (window.electronAPI && window.electronAPI.writeFile) {
-      await window.electronAPI.writeFile(savePath, Buffer.from(merged));
+      const updateBytes = Buffer.from(merged);
+      const verification = require("./update-utils").verifyAssetDigest(
+        updateBytes,
+        asset.digest
+      );
+      if (verification.reason === "mismatch") {
+        throw new Error("Downloaded update failed SHA-256 verification");
+      }
+      await window.electronAPI.writeFile(savePath, updateBytes);
       try {
         const { shell } = require("electron");
         if (shell && shell.showItemInFolder) shell.showItemInFolder(savePath);
@@ -506,12 +486,11 @@ async function downloadLatestReleaseFromGitHub() {
           window.open(downloadsDir, "_blank");
         } catch (e) {}
       }
-      // attempt to run installer via main ipc
-      try {
-        const { ipcRenderer } = require("electron");
-        if (ipcRenderer && ipcRenderer.send)
-          ipcRenderer.send("run-installer-and-exit", savePath, []);
-      } catch (e) {}
+      if (statusEl) {
+        statusEl.textContent = verification.verified
+          ? "Update downloaded and SHA-256 verified. Open it from Downloads when ready."
+          : "Update downloaded. Open it from Downloads when ready.";
+      }
     } else {
       // fallback: open releases page
       const url =
@@ -567,39 +546,190 @@ const SETTINGS_KEYS = {
   videoFps: "compressly_videoFps",
   targetResolution: "compressly_targetResolution",
   priority: "compressly_priority",
+  compressionMode: "compressly_compressionMode",
+  smartOptions: "compressly_smartOptions",
 };
+
+const TARGET_PRESETS = [1, 5, 10, 25, 50, 100];
+const FPS_PRESETS = [24, 25, 30, 50, 60, 120];
+const { selectPreset, isValidTargetSize, isValidFps } = require("./media-utils");
+
+function persistSetting(key, value) {
+  try {
+    localStorage.setItem(key, String(value));
+  } catch (e) {}
+}
+
+function getSmartOptions() {
+  return {
+    quality: smartQualityEl.value,
+    retainResolution: smartRetainResolutionEl.checked,
+    retainFps: smartRetainFpsEl.checked,
+    preserveAudio: smartPreserveAudioEl.checked,
+    stripMetadata: smartStripMetadataEl.checked,
+  };
+}
+
+function persistSmartOptions() {
+  persistSetting(SETTINGS_KEYS.smartOptions, JSON.stringify(getSmartOptions()));
+}
+
+function setCompressionMode(mode, animate = true) {
+  const nextMode = mode === "smart" ? "smart" : "standard";
+  const allowMotion =
+    animate &&
+    !document.body.classList.contains("lite-mode") &&
+    !(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  if (
+    allowMotion &&
+    compressionMode === "smart" &&
+    nextMode === "standard" &&
+    !document.body.classList.contains("smart-exiting")
+  ) {
+    document.body.classList.add("smart-exiting");
+    setTimeout(() => {
+      document.body.classList.remove("smart-exiting");
+      setCompressionMode("standard", false);
+      document.body.classList.add("standard-entering");
+      setTimeout(
+        () => document.body.classList.remove("standard-entering"),
+        240
+      );
+    }, 280);
+    return;
+  }
+  compressionMode = nextMode;
+  const smart = compressionMode === "smart";
+  standardModeBtn.classList.toggle("active", !smart);
+  smartModeBtn.classList.toggle("active", smart);
+  document.body.classList.toggle("smart-mode", smart);
+  standardOptionsEl.classList.toggle("active", !smart);
+  smartOptionsEl.classList.toggle("active", smart);
+  const incoming = smart ? smartOptionsEl : standardOptionsEl;
+  if (allowMotion && smart) {
+    incoming.classList.add("entering");
+    setTimeout(() => incoming.classList.remove("entering"), 340);
+  }
+  modeDescriptionEl.textContent =
+    "Make files meaningfully smaller while preserving the details, motion, and sound that matter.";
+  const dropHint = document.querySelector(".drop-hint");
+  if (dropHint)
+    dropHint.textContent = smart
+      ? "Drop media here and Smart Compression will analyze the best way to optimize it"
+      : 'Drag & drop files here, or click "Select Files"';
+  startBtn.textContent = smart ? "Smart Compress" : "Compress!";
+  pickBtn.textContent = smart ? "Add Media" : "Select Files";
+  persistSetting(SETTINGS_KEYS.compressionMode, compressionMode);
+}
+
+function applyTargetSizeControl(value, persist = false) {
+  const validValue = isValidTargetSize(value) ? Number(value) : 10;
+  const selected = selectPreset(validValue, TARGET_PRESETS);
+  targetSizeEl.value = String(validValue);
+  targetSizePresetEl.value = selected;
+  if (selected !== "custom") targetSizePresetEl.dataset.lastPreset = selected;
+  else if (!targetSizePresetEl.dataset.lastPreset)
+    targetSizePresetEl.dataset.lastPreset = "10";
+  targetSizeControlEl.classList.toggle("custom-active", selected === "custom");
+  if (persist) persistSetting(SETTINGS_KEYS.targetSize, validValue);
+}
+
+function applyFpsControl(value, persist = false) {
+  const validValue = isValidFps(value) ? Number(value) : 30;
+  const selected = selectPreset(validValue, FPS_PRESETS);
+  videoFpsEl.value = String(validValue);
+  videoFpsPresetEl.value = selected;
+  if (selected !== "custom") videoFpsPresetEl.dataset.lastPreset = selected;
+  else if (!videoFpsPresetEl.dataset.lastPreset)
+    videoFpsPresetEl.dataset.lastPreset = "30";
+  videoFpsControlEl.classList.toggle("custom-active", selected === "custom");
+  if (persist) persistSetting(SETTINGS_KEYS.videoFps, validValue);
+}
 
 // Load persisted settings (if present) and apply to inputs
 try {
   const savedTarget = localStorage.getItem(SETTINGS_KEYS.targetSize);
-  if (savedTarget !== null && targetSizeEl) targetSizeEl.value = savedTarget;
+  applyTargetSizeControl(savedTarget !== null ? savedTarget : targetSizeEl.value);
   const savedFps = localStorage.getItem(SETTINGS_KEYS.videoFps);
-  if (savedFps !== null && videoFpsEl) videoFpsEl.value = savedFps;
+  applyFpsControl(savedFps !== null ? savedFps : videoFpsEl.value);
   const savedRes = localStorage.getItem(SETTINGS_KEYS.targetResolution);
   if (savedRes !== null && targetResolutionEl)
     targetResolutionEl.value = savedRes;
   const savedPriority = localStorage.getItem(SETTINGS_KEYS.priority);
   if (savedPriority !== null && prioritySelectEl)
     prioritySelectEl.value = savedPriority;
+  try {
+    const savedSmart = JSON.parse(
+      localStorage.getItem(SETTINGS_KEYS.smartOptions) || "{}"
+    );
+    if (["fidelity", "balanced", "compact"].includes(savedSmart.quality))
+      smartQualityEl.value = savedSmart.quality;
+    for (const [element, key] of [
+      [smartRetainResolutionEl, "retainResolution"],
+      [smartRetainFpsEl, "retainFps"],
+      [smartPreserveAudioEl, "preserveAudio"],
+      [smartStripMetadataEl, "stripMetadata"],
+    ]) {
+      if (typeof savedSmart[key] === "boolean") element.checked = savedSmart[key];
+    }
+  } catch (e) {}
+  setCompressionMode(
+    localStorage.getItem(SETTINGS_KEYS.compressionMode) || "standard",
+    false
+  );
 } catch (e) {
   console.warn("Could not load settings from localStorage", e);
 }
 
 // Save handlers to persist on change
 try {
+  standardModeBtn.addEventListener("click", () => setCompressionMode("standard"));
+  smartModeBtn.addEventListener("click", () => setCompressionMode("smart"));
+  [
+    smartQualityEl,
+    smartRetainResolutionEl,
+    smartRetainFpsEl,
+    smartPreserveAudioEl,
+    smartStripMetadataEl,
+  ].forEach((element) => element.addEventListener("change", persistSmartOptions));
+  if (targetSizePresetEl)
+    targetSizePresetEl.addEventListener("change", () => {
+      if (targetSizePresetEl.value === "custom") {
+        targetSizeControlEl.classList.add("custom-active");
+        targetSizeEl.focus();
+      } else {
+        applyTargetSizeControl(targetSizePresetEl.value, true);
+      }
+    });
   if (targetSizeEl)
-    targetSizeEl.addEventListener("change", (ev) => {
-      try {
-        const v = String(ev.target.value);
-        localStorage.setItem(SETTINGS_KEYS.targetSize, v);
-      } catch (e) {}
+    targetSizeEl.addEventListener("change", () => {
+      if (!isValidTargetSize(targetSizeEl.value)) targetSizeEl.value = "10";
+      applyTargetSizeControl(targetSizeEl.value, true);
+    });
+  if (targetCustomCloseEl)
+    targetCustomCloseEl.addEventListener("click", () => {
+      applyTargetSizeControl(
+        targetSizePresetEl.dataset.lastPreset || "10",
+        true
+      );
+    });
+  if (videoFpsPresetEl)
+    videoFpsPresetEl.addEventListener("change", () => {
+      if (videoFpsPresetEl.value === "custom") {
+        videoFpsControlEl.classList.add("custom-active");
+        videoFpsEl.focus();
+      } else {
+        applyFpsControl(videoFpsPresetEl.value, true);
+      }
     });
   if (videoFpsEl)
-    videoFpsEl.addEventListener("change", (ev) => {
-      try {
-        const v = String(ev.target.value);
-        localStorage.setItem(SETTINGS_KEYS.videoFps, v);
-      } catch (e) {}
+    videoFpsEl.addEventListener("change", () => {
+      if (!isValidFps(videoFpsEl.value)) videoFpsEl.value = "30";
+      applyFpsControl(videoFpsEl.value, true);
+    });
+  if (fpsCustomCloseEl)
+    fpsCustomCloseEl.addEventListener("click", () => {
+      applyFpsControl(videoFpsPresetEl.dataset.lastPreset || "30", true);
     });
   if (targetResolutionEl)
     targetResolutionEl.addEventListener("change", (ev) => {
@@ -618,6 +748,14 @@ try {
 } catch (e) {
   console.warn("Could not attach settings persistence handlers", e);
 }
+
+// The saved theme and custom-control states are now settled. Allow normal
+// transitions only after Chromium has committed this stable initial layout.
+requestAnimationFrame(() => {
+  requestAnimationFrame(() => {
+    document.documentElement.classList.remove("booting", "startup-dark");
+  });
+});
 
 // Global file lists/state (were accidentally removed) used by file pick, drag/drop, and processing
 let files = [];
@@ -708,9 +846,9 @@ try {
             updateModal.classList.remove("visible")
           );
 
-        // Download: auto-save to Downloads and reveal
+        // Downloading is handled once by downloadLatestReleaseFromGitHub().
         const downloadBtn = document.getElementById("updateDownloadBtn");
-        if (downloadBtn) {
+        if (false && downloadBtn) {
           downloadBtn.addEventListener("click", async () => {
             downloadBtn.disabled = true;
             downloadBtn.classList.add("loading");
@@ -820,23 +958,6 @@ try {
                     window.open(downloadsDir, "_blank");
                   } catch (e) {}
                 }
-                // run installer and exit the app
-                try {
-                  const electron = require("electron");
-                  if (electron && electron.ipcRenderer) {
-                    electron.ipcRenderer.send(
-                      "run-installer-and-exit",
-                      savePath,
-                      []
-                    );
-                  } else if (
-                    window &&
-                    window.electronAPI &&
-                    window.electronAPI.ipc
-                  ) {
-                    // no-op: preload currently doesn't expose ipc send; main listens for 'run-installer-and-exit'
-                  }
-                } catch (e) {}
               } else {
                 openExternal();
               }
@@ -957,7 +1078,15 @@ async function getFfprobePath() {
   return "ffprobe";
 }
 // Allowed extensions for drag/drop and basic type checks
-const IMAGE_EXTS = [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tiff"];
+const IMAGE_EXTS = [
+  ".jpg",
+  ".jpeg",
+  ".png",
+  ".webp",
+  ".bmp",
+  ".tif",
+  ".tiff",
+];
 const VIDEO_EXTS = [".mp4", ".mov", ".mkv", ".avi", ".webm", ".flv", ".wmv"];
 const AUDIO_EXTS = [".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".opus"];
 
@@ -1099,6 +1228,7 @@ pickBtn.addEventListener("click", async () => {
       window.electronAPI.log("select-files error", err.message);
   }
 });
+if (smartPickBtn) smartPickBtn.addEventListener("click", () => pickBtn.click());
 
 // Drag & drop support
 const dropArea = document.getElementById("dropArea");
@@ -1309,7 +1439,7 @@ if (dropArea) {
   } catch (e) {}
 
   // Footer info update function
-  function updateFooterInfo() {
+function updateFooterInfo() {
     try {
       if (!footerInfoEl) return;
       const fs = require("fs");
@@ -1342,8 +1472,222 @@ if (dropArea) {
   }
 }
 
+const detailViewEl = document.getElementById("detailView");
+let detailedFilePath = null;
+let detailRefreshTimer = null;
+
+function mediaKindForPath(filePath) {
+  const ext = require("path").extname(filePath).toLowerCase();
+  if (IMAGE_EXTS.includes(ext)) return "Image";
+  if (VIDEO_EXTS.includes(ext)) return "Video";
+  if (AUDIO_EXTS.includes(ext)) return "Audio";
+  return "Media";
+}
+
+function setDetailRows(elementId, rows) {
+  const list = document.getElementById(elementId);
+  if (!list) return;
+  list.replaceChildren();
+  rows.forEach(([label, value]) => {
+    const dt = document.createElement("dt");
+    const dd = document.createElement("dd");
+    dt.textContent = label;
+    dd.textContent = value === null || value === undefined || value === ""
+      ? "Unavailable"
+      : String(value);
+    list.append(dt, dd);
+  });
+}
+
+function parseFrameRate(value) {
+  if (!value) return null;
+  const [a, b = "1"] = String(value).split("/").map(Number);
+  return b && Number.isFinite(a / b) ? Math.round((a / b) * 100) / 100 : null;
+}
+
+async function loadSourceDetails(filePath) {
+  if (!fileStates[filePath]) return;
+  const state = fileStates[filePath];
+  if (state.sourceDetailsLoaded || state.sourceDetailsLoading) return;
+  state.sourceDetailsLoading = true;
+  const fs = require("fs");
+  const kind = mediaKindForPath(filePath);
+  const details = { kind };
+  try {
+    details.originalBytes = fs.statSync(filePath).size;
+    if (kind === "Image") {
+      const metadata = await require("sharp")(filePath, {
+        limitInputPixels: false,
+      }).metadata();
+      details.width = metadata.width;
+      details.height = metadata.height;
+      details.codec = metadata.format;
+    } else {
+      const ffmpeg = require("fluent-ffmpeg");
+      try {
+        ffmpeg.setFfmpegPath(resolveBinaryPath(await getFfmpegPath()));
+        ffmpeg.setFfprobePath(resolveBinaryPath(await getFfprobePath()));
+      } catch (e) {}
+      const metadata = await new Promise((resolve, reject) =>
+        ffmpeg.ffprobe(filePath, (err, data) => (err ? reject(err) : resolve(data)))
+      );
+      details.duration = metadata.format && metadata.format.duration;
+      const video = (metadata.streams || []).find((s) => s.codec_type === "video");
+      const audio = (metadata.streams || []).find((s) => s.codec_type === "audio");
+      if (video) {
+        details.width = video.width;
+        details.height = video.height;
+        details.fps = parseFrameRate(video.avg_frame_rate || video.r_frame_rate);
+        details.videoCodec = video.codec_name;
+      }
+      if (audio) {
+        details.audioCodec = audio.codec_name;
+        details.audioBitrateKbps = audio.bit_rate
+          ? Math.round(Number(audio.bit_rate) / 1000)
+          : null;
+      }
+    }
+    state.sourceDetails = details;
+    state.sourceDetailsLoaded = true;
+  } catch (error) {
+    state.sourceDetails = { ...details, error: error.message };
+    state.sourceDetailsLoaded = true;
+  } finally {
+    state.sourceDetailsLoading = false;
+    updateDetailedView();
+  }
+}
+
+function updateDetailedView() {
+  if (!detailedFilePath || !fileStates[detailedFilePath]) return;
+  const fs = require("fs");
+  const path = require("path");
+  const {
+    formatBytes,
+    formatDuration,
+    formatReduction,
+  } = require("./media-utils");
+  const state = fileStates[detailedFilePath];
+  const source = state.sourceDetails || {};
+  const settings = state.settingsSnapshot || {};
+  const processing = state.processingDetails || {};
+  const result = state.resultDetails || {};
+  let liveOutputBytes = result.outputBytes;
+  try {
+    if (state.outPath && fs.existsSync(state.outPath))
+      liveOutputBytes = fs.statSync(state.outPath).size;
+  } catch (e) {}
+
+  document.getElementById("detailName").textContent = path.basename(detailedFilePath);
+  document.getElementById("detailPath").textContent = detailedFilePath;
+  document.getElementById("detailStatus").textContent =
+    state.status === "done-oversize" ? "Over target" : state.status || "Ready";
+  const progress = Math.max(0, Math.min(100, state.displayedProgress || state.progress || 0));
+  document.getElementById("detailProgressPct").textContent = `${Math.round(progress)}%`;
+  document.getElementById("detailProgressBar").style.width = `${progress}%`;
+  document.getElementById("detailProgressLabel").textContent =
+    state.status === "processing" ? "Compressing" : state.status || "Ready";
+  const endTime = processing.endedAt || Date.now();
+  document.getElementById("detailElapsed").textContent = processing.startedAt
+    ? formatDuration((endTime - processing.startedAt) / 1000)
+    : "—";
+  document.getElementById("detailCurrentSize").textContent =
+    liveOutputBytes === undefined ? "—" : formatBytes(liveOutputBytes);
+  document.getElementById("detailAttempt").textContent = processing.stage || "—";
+
+  setDetailRows("detailSource", [
+    ["Type", source.kind || mediaKindForPath(detailedFilePath)],
+    ["Original size", formatBytes(source.originalBytes)],
+    ["Duration", source.duration === undefined ? "Unavailable" : formatDuration(source.duration)],
+    ["Dimensions", source.width && source.height ? `${source.width} × ${source.height}` : "Unavailable"],
+    ["Source FPS", source.fps],
+    ["Video codec", source.videoCodec || (source.kind === "Image" ? source.codec : null)],
+    ["Audio codec", source.audioCodec],
+    ["Audio bitrate", source.audioBitrateKbps ? `${source.audioBitrateKbps} kbps` : null],
+  ]);
+  const smartSettings = settings.mode === "Smart Compression";
+  setDetailRows("detailSettings", [
+    ["Mode", settings.mode || "Target Size"],
+    ["Target size", smartSettings ? "Quality based" : settings.targetMB ? `${settings.targetMB} MB` : "Not started"],
+    ["Quality", smartSettings ? settings.quality : null],
+    ["FPS", smartSettings ? (settings.retainFps ? "Retain source" : "Optimize") : settings.mediaKind === "Video" ? settings.fps : "Not applicable"],
+    ["Resolution", smartSettings ? (settings.retainResolution ? "Retain source" : "Optimize") : settings.mediaKind === "Video" ? settings.resolution : "Not applicable"],
+    ["Audio", smartSettings ? (settings.preserveAudio ? "Preserve quality" : "Optimize") : settings.mediaKind === "Video" ? settings.priority : "Not applicable"],
+    ["Metadata", smartSettings ? (settings.stripMetadata ? "Remove" : "Preserve") : "Not applicable"],
+    ["Output format", processing.outputFormat],
+    ["Video quality", smartSettings ? processing.videoBitrateKbps : processing.videoBitrateKbps ? `${processing.videoBitrateKbps} kbps` : null],
+    ["Audio bitrate", processing.audioBitrateKbps ? `${processing.audioBitrateKbps} kbps` : null],
+  ]);
+  const originalBytes = source.originalBytes;
+  const targetResult =
+    state.status === "done-oversize"
+      ? "Over target"
+      : state.status === "done"
+        ? smartSettings ? "Smart compression complete" : "Within target"
+        : state.status === "cancelled"
+          ? "Cancelled"
+          : state.status === "error"
+            ? "Failed"
+            : "Pending";
+  setDetailRows("detailResult", [
+    ["Target result", targetResult],
+    ["Output size", result.outputBytes === undefined ? "Pending" : formatBytes(result.outputBytes)],
+    ["Reduction", result.outputBytes === undefined ? "Pending" : formatReduction(originalBytes, result.outputBytes)],
+    ["Output path", state.lastOut || state.outPath || "Pending"],
+    ["Error", result.error],
+  ]);
+
+  const active = state.status === "queued" || state.status === "processing";
+  const cancel = document.getElementById("detailCancel");
+  const reveal = document.getElementById("detailReveal");
+  cancel.style.display = active ? "inline-flex" : "none";
+  cancel.disabled = !active;
+  reveal.style.display = state.lastOut && fs.existsSync(state.lastOut) ? "inline-flex" : "none";
+}
+
+function openDetailedView(filePath) {
+  detailedFilePath = filePath;
+  detailViewEl.classList.add("visible");
+  detailViewEl.setAttribute("aria-hidden", "false");
+  document.body.classList.add("detail-open");
+  updateDetailedView();
+  loadSourceDetails(filePath);
+  clearInterval(detailRefreshTimer);
+  detailRefreshTimer = setInterval(updateDetailedView, 250);
+}
+
+function closeDetailedView() {
+  detailViewEl.classList.remove("visible");
+  detailViewEl.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("detail-open");
+  detailedFilePath = null;
+  clearInterval(detailRefreshTimer);
+  detailRefreshTimer = null;
+}
+
+document.getElementById("detailBack").addEventListener("click", closeDetailedView);
+document.getElementById("detailCancel").addEventListener("click", () => {
+  const state = detailedFilePath && fileStates[detailedFilePath];
+  if (!state) return;
+  state.cancelRequested = true;
+  if (state.cmd && typeof state.cmd.kill === "function") {
+    try { state.cmd.kill("SIGKILL"); } catch (e) {}
+  }
+  state.status = "cancelled";
+  updateDetailedView();
+});
+document.getElementById("detailReveal").addEventListener("click", () => {
+  const state = detailedFilePath && fileStates[detailedFilePath];
+  if (state && state.lastOut)
+    require("electron").ipcRenderer.send("reveal-file", state.lastOut);
+});
+window.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && detailedFilePath) closeDetailedView();
+});
+
 function renderList() {
   fileListEl.innerHTML = "";
+  document.body.classList.toggle("smart-has-files", files.length > 0);
   for (const p of files) {
     // initialize state
     if (!fileStates[p])
@@ -1352,16 +1696,24 @@ function renderList() {
     const meta = document.createElement("div");
     meta.className = "file-meta";
     const img = document.createElement("img");
-    img.src = "./file-icon.png";
+    img.width = 46;
+    img.height = 46;
+    img.src = "./compressly.ico";
     img.onerror = () => {
-      img.src = "./file-icon.png";
+      // Avoid repeatedly assigning a missing fallback and triggering an error loop.
+      img.onerror = null;
+      img.src = "./compressly.ico";
     };
     const info = document.createElement("div");
     info.className = "file-info";
     const name = document.createElement("div");
-    name.innerHTML = `<div style="font-weight:600">${p
-      .split("\\")
-      .pop()}</div><div class='small'>${p}</div>`;
+    const fileName = document.createElement("div");
+    const filePath = document.createElement("div");
+    fileName.className = "file-name";
+    fileName.textContent = require("path").basename(p);
+    filePath.className = "small file-path";
+    filePath.textContent = p;
+    name.append(fileName, filePath);
     // no per-file estimate (removed by user). show path only
     info.appendChild(name);
     meta.appendChild(img);
@@ -1390,15 +1742,42 @@ function renderList() {
         ".opus",
       ];
       if (videoExts.includes(ext)) {
+        const leaveThumbnailSpaceEmpty = () => {
+          img.onload = null;
+          img.onerror = null;
+          img.removeAttribute("src");
+          img.classList.remove("show");
+          img.classList.add("thumb-fade");
+        };
+        const revealVideoThumbnail = (thumbnailPath) => {
+          // Progress updates rebuild the row. Record the first reveal so those
+          // later renders do not replay the entrance animation every time.
+          fileStates[p].thumbnailFadePlayed = true;
+          img.onload = () => {
+            img.onload = null;
+            // Establish the hidden state before revealing the decoded frame so
+            // Chromium consistently runs the fade transition.
+            img.classList.remove("show");
+            img.getBoundingClientRect();
+            requestAnimationFrame(() => img.classList.add("show"));
+          };
+          img.src = "file://" + thumbnailPath;
+        };
         // use cached thumbnail if available
         if (fileStates[p].thumb) {
-          img.src = "file://" + fileStates[p].thumb;
-          img.classList.add("thumb-fade", "show");
+          if (fileStates[p].thumbnailFadePlayed) {
+            img.onload = null;
+            img.src = "file://" + fileStates[p].thumb;
+            img.classList.add("thumb-fade", "show");
+          } else {
+            leaveThumbnailSpaceEmpty();
+            revealVideoThumbnail(fileStates[p].thumb);
+          }
         } else if (!fileStates[p].thumbGenerating) {
           fileStates[p].thumbGenerating = true;
-          // show placeholder immediately
-          img.src = "./file-icon.png";
-          img.classList.add("thumb-fade");
+          // Render nothing while FFmpeg works, but keep the fixed 46px image
+          // box in layout so the filename and controls never shift.
+          leaveThumbnailSpaceEmpty();
           // compute a simple cache key: mtime-size
           try {
             const fs = require("fs");
@@ -1410,8 +1789,7 @@ function renderList() {
             const cachePath = require("path").join(tmp, cacheName);
             if (fs.existsSync(cachePath)) {
               fileStates[p].thumb = cachePath;
-              img.src = "file://" + cachePath;
-              img.classList.add("show");
+              revealVideoThumbnail(cachePath);
               fileStates[p].thumbGenerating = false;
             } else {
               generateVideoThumbnail(p, { middle: true })
@@ -1421,12 +1799,10 @@ function renderList() {
                       // move to cachePath
                       fs.copyFileSync(th, cachePath);
                       fileStates[p].thumb = cachePath;
-                      img.src = "file://" + cachePath;
-                      img.classList.add("show");
+                      revealVideoThumbnail(cachePath);
                     } catch (e) {
                       fileStates[p].thumb = th;
-                      img.src = "file://" + th;
-                      img.classList.add("show");
+                      revealVideoThumbnail(th);
                     }
                   }
                 })
@@ -1441,8 +1817,7 @@ function renderList() {
               .then((th) => {
                 if (th) {
                   fileStates[p].thumb = th;
-                  img.src = "file://" + th;
-                  img.classList.add("show");
+                  revealVideoThumbnail(th);
                 }
               })
               .catch((err) => console.warn("thumb err", err))
@@ -1450,6 +1825,10 @@ function renderList() {
                 fileStates[p].thumbGenerating = false;
               });
           }
+        } else {
+          // A render can occur while an existing thumbnail job is still
+          // running. Preserve the same empty, fixed-width layout slot.
+          leaveThumbnailSpaceEmpty();
         }
       } else if (audioExts.includes(ext)) {
         // show a simple music SVG for audio files using the brand gradient
@@ -1469,7 +1848,7 @@ function renderList() {
           img.src = "data:image/svg+xml;utf8," + encodeURIComponent(svg);
           img.classList.add("thumb-fade", "show");
         } catch (e) {
-          img.src = "./file-icon.png";
+          img.src = "./compressly.ico";
         }
       } else {
         // for images, show file directly
@@ -1530,7 +1909,9 @@ function renderList() {
     const status = document.createElement("div");
     status.className = "small";
     // show a helpful CTA when the file is done
-    if (
+    if (fileStates[p] && fileStates[p].status === "done-oversize") {
+      status.textContent = "Over target";
+    } else if (
       (fileStates[p] && fileStates[p].status === "done") ||
       (fileStates[p] && fileStates[p].progress >= 100)
     ) {
@@ -1571,12 +1952,14 @@ function renderList() {
     // remove button (trash icon)
     const removeBtn = document.createElement("button");
     removeBtn.className = "file-action-btn remove";
-    // disable remove while the file is actively processing
+    // Disable and mute removal while the file is queued or processing.
     removeBtn.disabled = !!(
-      fileStates[p] && fileStates[p].status === "processing"
+      fileStates[p] &&
+      (fileStates[p].status === "queued" ||
+        fileStates[p].status === "processing")
     );
     removeBtn.title = removeBtn.disabled
-      ? "Cannot remove while processing"
+      ? "Cannot remove while queued or processing"
       : "Remove";
     // inline the provided trash SVG but ensure it uses currentColor for fill
     removeBtn.innerHTML = `<svg aria-hidden="true" focusable="false" width="1em" height="1em" viewBox="0 0 800 800" style="vertical-align:middle; fill:currentColor;">
@@ -1633,6 +2016,12 @@ function renderList() {
     // group action buttons together so they appear next to each other
     const btnGroup = document.createElement("div");
     btnGroup.className = "file-action-buttons";
+    const detailsBtn = document.createElement("button");
+    detailsBtn.className = "file-action-btn details";
+    detailsBtn.type = "button";
+    detailsBtn.textContent = "Details";
+    detailsBtn.addEventListener("click", () => openDetailedView(p));
+    btnGroup.appendChild(detailsBtn);
     btnGroup.appendChild(cancelBtn);
     btnGroup.appendChild(removeBtn);
 
@@ -1728,7 +2117,8 @@ function renderList() {
 
 startBtn.addEventListener("click", async () => {
   if (files.length === 0) return alert("No files selected");
-  statusEl.textContent = "Compressing...";
+  statusEl.textContent =
+    compressionMode === "smart" ? "Smart compression in progress..." : "Compressing...";
   // Lock UI globally (except About, Lite, Theme)
   try {
     setGlobalProcessingLock(true);
@@ -1736,6 +2126,7 @@ startBtn.addEventListener("click", async () => {
   startBtn.disabled = true;
   // clear any previous cancellation state for a fresh run
   anyCancelled = false;
+  let anyOversize = false;
   let firstOutDir = null;
   let firstOutPath = null;
   for (const p of files.slice()) {
@@ -1756,6 +2147,18 @@ startBtn.addEventListener("click", async () => {
         if (fileStates[p]) {
           fileStates[p].progress = progress;
           fileStates[p].status = status || fileStates[p].status;
+          if (status === "done" || status === "done-oversize") {
+            try {
+              const outputBytes = require("fs").statSync(outPath).size;
+              fileStates[p].resultDetails = {
+                ...(fileStates[p].resultDetails || {}),
+                outputBytes,
+                targetMet: status === "done",
+              };
+            } catch (e) {}
+            if (fileStates[p].processingDetails)
+              fileStates[p].processingDetails.endedAt = Date.now();
+          }
         }
         if (outPath && !firstOutDir) {
           try {
@@ -1764,21 +2167,36 @@ startBtn.addEventListener("click", async () => {
           } catch (e) {}
         }
         renderList();
+        updateDetailedView();
       });
       if (result === null) {
         if (fileStates[p]) fileStates[p].status = "cancelled";
+        if (fileStates[p] && fileStates[p].processingDetails)
+          fileStates[p].processingDetails.endedAt = Date.now();
         anyCancelled = true;
+      }
+      if (fileStates[p] && fileStates[p].status === "done-oversize") {
+        anyOversize = true;
       }
       // recent outputs handling removed
     } catch (err) {
       console.error(err);
       if (fileStates[p]) fileStates[p].status = "error";
+      if (fileStates[p]) {
+        fileStates[p].resultDetails = { error: err.message };
+        if (fileStates[p].processingDetails)
+          fileStates[p].processingDetails.endedAt = Date.now();
+      }
       window.electronAPI.log("Error compressing", p, err.message);
       renderList();
     }
   }
 
-  statusEl.textContent = anyCancelled ? "Cancelled" : "Done";
+  statusEl.textContent = anyCancelled
+    ? "Cancelled"
+    : anyOversize
+      ? "Done with size warnings"
+      : "Done";
   startBtn.disabled = false;
   try {
     setGlobalProcessingLock(false);
@@ -1815,35 +2233,77 @@ async function compressFile(p, onProgress) {
   const imageExts = IMAGE_EXTS;
   const videoExts = VIDEO_EXTS;
   const audioExts = AUDIO_EXTS;
+  if (!fileStates[p]) fileStates[p] = {};
+  const mediaKind = imageExts.includes(ext)
+    ? "Image"
+    : videoExts.includes(ext)
+      ? "Video"
+      : audioExts.includes(ext)
+        ? "Audio"
+        : "Media";
+  try {
+    fileStates[p].sourceDetails = {
+      ...(fileStates[p].sourceDetails || {}),
+      kind: mediaKind,
+      originalBytes: require("fs").statSync(p).size,
+    };
+  } catch (e) {}
+  const fpsSetting = videoFpsEl ? parseInt(videoFpsEl.value || "30", 10) : 30;
+  fileStates[p].settingsSnapshot = {
+    mediaKind,
+    targetMB,
+    fps: fpsSetting,
+    resolution: targetResolutionEl ? targetResolutionEl.value : "720p",
+    priority: prioritySelectEl ? prioritySelectEl.value : "balanced",
+  };
+  fileStates[p].processingDetails = {
+    ...(fileStates[p].processingDetails || {}),
+    startedAt: Date.now(),
+    endedAt: null,
+    stage: "Starting",
+  };
+  fileStates[p].resultDetails = {};
+
+  if (compressionMode === "smart") {
+    const smartOptions = getSmartOptions();
+    fileStates[p].settingsSnapshot = {
+      mediaKind,
+      mode: "Smart Compression",
+      ...smartOptions,
+    };
+    if (imageExts.includes(ext))
+      return await smartCompressImage(p, buffer, onProgress, smartOptions);
+    if (videoExts.includes(ext))
+      return await smartCompressVideo(p, onProgress, smartOptions);
+    if (audioExts.includes(ext))
+      return await smartCompressAudio(p, onProgress, smartOptions);
+  }
 
   if (imageExts.includes(ext)) {
-    await compressImage(p, buffer, { ext }, targetMB, onProgress);
+    return await compressImage(p, buffer, { ext }, targetMB, onProgress);
   } else if (videoExts.includes(ext)) {
     // read UI options for video
-    const fps = videoFpsEl ? parseInt(videoFpsEl.value || "30", 10) : 30;
+    const fps = fpsSetting;
     const priority = prioritySelectEl
       ? prioritySelectEl.value || "balanced"
       : "balanced";
-    await compressVideo(p, targetMB, onProgress, { fps, priority });
+    return await compressVideo(p, targetMB, onProgress, { fps, priority });
   } else if (audioExts.includes(ext)) {
     // audio-only file
-    await compressAudio(p, targetMB, onProgress, {});
+    return await compressAudio(p, targetMB, onProgress, {});
   } else {
     // Fallback: try to infer from header using file-type if available dynamically
     try {
       const ftModule = await import("file-type");
       const ft = await ftModule.fileTypeFromBuffer(buffer);
       if (ft && ft.mime.startsWith("image/")) {
-        await compressImage(p, buffer, ft, targetMB);
-        return;
+        return await compressImage(p, buffer, ft, targetMB, onProgress);
       }
       if (ft && ft.mime.startsWith("video/")) {
-        await compressVideo(p, targetMB);
-        return;
+        return await compressVideo(p, targetMB, onProgress);
       }
       if (ft && ft.mime.startsWith("audio/")) {
-        await compressAudio(p, targetMB);
-        return;
+        return await compressAudio(p, targetMB, onProgress);
       }
     } catch (e) {
       console.warn(
@@ -1855,11 +2315,226 @@ async function compressFile(p, onProgress) {
   }
 }
 
+function smartOutputPath(inputPath, extension) {
+  const path = require("path");
+  const fs = require("fs");
+  const parsed = path.parse(inputPath);
+  let candidate = path.join(parsed.dir, `${parsed.name}_smart${extension}`);
+  let count = 1;
+  while (fs.existsSync(candidate)) {
+    candidate = path.join(parsed.dir, `${parsed.name}_smart-${count}${extension}`);
+    count++;
+  }
+  return candidate;
+}
+
+async function smartCompressImage(p, buffer, onProgress, opts) {
+  const sharp = require("sharp");
+  const fs = require("fs");
+  const path = require("path");
+  const { getImageOutputExtension } = require("./media-utils");
+  const inputExt = path.extname(p).toLowerCase();
+  const outputExt = getImageOutputExtension(p);
+  const outPath = smartOutputPath(p, outputExt);
+  const quality = require("./media-utils").getSmartQualitySettings(
+    opts.quality
+  ).imageQuality;
+  let pipeline = sharp(buffer, { limitInputPixels: false });
+  const metadata = await pipeline.metadata();
+  fileStates[p].sourceDetails = {
+    ...(fileStates[p].sourceDetails || {}),
+    kind: "Image",
+    width: metadata.width,
+    height: metadata.height,
+    codec: metadata.format,
+  };
+  fileStates[p].sourceDetailsLoaded = true;
+  fileStates[p].outPath = outPath;
+  fileStates[p].processingDetails = {
+    ...(fileStates[p].processingDetails || {}),
+    stage: "Analyzing image",
+    outputFormat: outputExt.replace(/^\./, "").toUpperCase(),
+  };
+  if (!opts.retainResolution)
+    pipeline = pipeline.resize({ width: 2560, height: 1440, fit: "inside", withoutEnlargement: true });
+  if (!opts.stripMetadata) pipeline = pipeline.withMetadata();
+  if ((outputExt === ".jpg" || outputExt === ".jpeg") && metadata.hasAlpha)
+    pipeline = pipeline.flatten({ background: "#ffffff" });
+  if (outputExt === ".png") pipeline = pipeline.png({ compressionLevel: 9, effort: 10 });
+  else if (outputExt === ".webp") pipeline = pipeline.webp({ quality, effort: 6 });
+  else pipeline = pipeline.jpeg({ quality, progressive: true, mozjpeg: true });
+  if (onProgress) onProgress(20, "processing", outPath);
+  fileStates[p].processingDetails.stage = "Optimizing image";
+  const data = await pipeline.toBuffer();
+  if (fileStates[p].cancelRequested) return null;
+  if (data.length >= buffer.length && opts.quality !== "compact") {
+    fileStates[p].processingDetails.stage = "Finding a smaller quality-safe result";
+    return smartCompressImage(p, buffer, onProgress, {
+      ...opts,
+      quality: "compact",
+    });
+  }
+  if (onProgress) onProgress(85, "processing", outPath);
+  await window.electronAPI.writeFile(outPath, data);
+  fileStates[p].lastOut = outPath;
+  fileStates[p].processingDetails.stage = "Complete";
+  if (onProgress) onProgress(100, "done", outPath);
+  return outPath;
+}
+
+async function configureSmartFfmpeg() {
+  const ffmpeg = require("fluent-ffmpeg");
+  try {
+    ffmpeg.setFfmpegPath(resolveBinaryPath(await getFfmpegPath()));
+    ffmpeg.setFfprobePath(resolveBinaryPath(await getFfprobePath()));
+  } catch (e) {}
+  return ffmpeg;
+}
+
+async function smartCompressVideo(p, onProgress, opts) {
+  const ffmpeg = await configureSmartFfmpeg();
+  const fs = require("fs");
+  const outPath = smartOutputPath(p, ".mp4");
+  const metadata = await new Promise((resolve, reject) =>
+    ffmpeg.ffprobe(p, (err, data) => (err ? reject(err) : resolve(data)))
+  );
+  const duration = Number(metadata.format.duration) || 1;
+  const video = (metadata.streams || []).find((s) => s.codec_type === "video");
+  const audio = (metadata.streams || []).find((s) => s.codec_type === "audio");
+  const sourceFps = parseFrameRate(video && (video.avg_frame_rate || video.r_frame_rate));
+  const crf = require("./media-utils").getSmartQualitySettings(
+    opts.quality
+  ).videoCrf;
+  fileStates[p].sourceDetails = {
+    ...(fileStates[p].sourceDetails || {}), kind: "Video", duration,
+    width: video && video.width, height: video && video.height, fps: sourceFps,
+    videoCodec: video && video.codec_name, audioCodec: audio && audio.codec_name,
+  };
+  fileStates[p].sourceDetailsLoaded = true;
+  fileStates[p].outPath = outPath;
+  fileStates[p].processingDetails = {
+    ...(fileStates[p].processingDetails || {}),
+    stage: "Quality-aware encoding", outputFormat: "MP4 (H.264/AAC)",
+    videoBitrateKbps: `CRF ${crf}`,
+    audioBitrateKbps: opts.preserveAudio ? 192 : 128,
+  };
+  return new Promise((resolve, reject) => {
+    let command = ffmpeg(p);
+    fileStates[p].cmd = command;
+    fileStates[p].status = "processing";
+    if (onProgress) onProgress(0, "processing", outPath);
+    const outputOptions = [
+      "-c:v libx264", `-crf ${crf}`, "-preset slow", "-pix_fmt yuv420p",
+      "-movflags +faststart",
+      opts.preserveAudio && audio && audio.codec_name === "aac" ? "-c:a copy" : "-c:a aac",
+    ];
+    if (!(opts.preserveAudio && audio && audio.codec_name === "aac"))
+      outputOptions.push(`-b:a ${opts.preserveAudio ? 192 : 128}k`);
+    if (opts.stripMetadata) outputOptions.push("-map_metadata -1");
+    if (!opts.retainFps && sourceFps) outputOptions.push(`-r ${Math.min(30, Math.round(sourceFps))}`);
+    if (!opts.retainResolution)
+      command = command.videoFilters("scale='if(gt(iw/ih,16/9),min(1920,iw),-2)':'if(gt(iw/ih,16/9),-2,min(1080,ih))'");
+    command.outputOptions(outputOptions)
+      .on("progress", (progress) => {
+        let pct = typeof progress.percent === "number" ? progress.percent : 0;
+        if (!pct && progress.timemark) {
+          const parts = String(progress.timemark).split(":").map(Number);
+          const seconds = (parts[0] || 0) * 3600 + (parts[1] || 0) * 60 + (parts[2] || 0);
+          pct = (seconds / duration) * 100;
+        }
+        if (onProgress) onProgress(Math.min(99, Math.round(pct)), "processing", outPath);
+      })
+      .on("end", () => {
+        fileStates[p].cmd = null;
+        if (fileStates[p].cancelRequested) {
+          try { if (fs.existsSync(outPath)) fs.unlinkSync(outPath); } catch (e) {}
+          if (onProgress) onProgress(0, "cancelled");
+          return resolve(null);
+        }
+        try {
+          const originalBytes = fs.statSync(p).size;
+          const outputBytes = fs.statSync(outPath).size;
+          if (
+            outputBytes >= originalBytes &&
+            opts.quality !== "compact"
+          ) {
+            fs.unlinkSync(outPath);
+            fileStates[p].processingDetails.stage =
+              "Retrying with a more efficient profile";
+            fileStates[p].displayedProgress = 0;
+            smartCompressVideo(p, onProgress, {
+              ...opts,
+              quality: "compact",
+            }).then(resolve, reject);
+            return;
+          }
+        } catch (e) {}
+        fileStates[p].lastOut = outPath;
+        fileStates[p].processingDetails.stage = "Complete";
+        if (onProgress) onProgress(100, "done", outPath);
+        resolve(outPath);
+      })
+      .on("error", (error) => {
+        fileStates[p].cmd = null;
+        try { if (fs.existsSync(outPath)) fs.unlinkSync(outPath); } catch (e) {}
+        if (fileStates[p].cancelRequested) return resolve(null);
+        reject(error);
+      })
+      .save(outPath);
+  });
+}
+
+async function smartCompressAudio(p, onProgress, opts) {
+  const ffmpeg = await configureSmartFfmpeg();
+  const fs = require("fs");
+  const outPath = smartOutputPath(p, ".mp3");
+  const bitrate = require("./media-utils").getSmartQualitySettings(
+    opts.quality
+  ).audioBitrateKbps;
+  fileStates[p].outPath = outPath;
+  fileStates[p].processingDetails = {
+    ...(fileStates[p].processingDetails || {}), stage: "High-quality audio encoding",
+    outputFormat: "MP3", audioBitrateKbps: bitrate,
+  };
+  return new Promise((resolve, reject) => {
+    const command = ffmpeg(p).noVideo().audioCodec("libmp3lame").audioBitrate(`${bitrate}k`).format("mp3");
+    fileStates[p].cmd = command;
+    if (opts.stripMetadata) command.outputOptions(["-map_metadata -1"]);
+    if (onProgress) onProgress(0, "processing", outPath);
+    command.on("progress", (pr) => onProgress && onProgress(Math.min(99, Math.round(pr.percent || 0)), "processing", outPath))
+      .on("end", () => {
+        fileStates[p].cmd = null;
+        if (fileStates[p].cancelRequested) {
+          try { if (fs.existsSync(outPath)) fs.unlinkSync(outPath); } catch (e) {}
+          if (onProgress) onProgress(0, "cancelled");
+          return resolve(null);
+        }
+        fileStates[p].lastOut = outPath;
+        fileStates[p].processingDetails.stage = "Complete";
+        if (onProgress) onProgress(100, "done", outPath);
+        resolve(outPath);
+      })
+      .on("error", (error) => {
+        fileStates[p].cmd = null;
+        try { if (fs.existsSync(outPath)) fs.unlinkSync(outPath); } catch (e) {}
+        if (fileStates[p].cancelRequested) return resolve(null);
+        reject(error);
+      }).save(outPath);
+  });
+}
+
 async function compressImage(p, buffer, ft, targetMB, onProgress) {
   const sharp = require("sharp");
   const path = require("path");
   const fs = require("fs");
   const origExt = path.extname(p).toLowerCase();
+  const {
+    getImageOutputExtension,
+    buildAvailableOutputPath,
+    isWithinTarget,
+    formatSizeWarning,
+  } = require("./media-utils");
+  const outputExt = getImageOutputExtension(p);
 
   // Don't support animated GIFs (explicitly removed)
   if (origExt === ".gif") {
@@ -1868,12 +2543,7 @@ async function compressImage(p, buffer, ft, targetMB, onProgress) {
   }
 
   // prepare output path (avoid overwrite)
-  let outPath = p.replace(/(\.[^.]+)$/, `_compressed${origExt}`);
-  let count = 1;
-  while (fs.existsSync(outPath)) {
-    outPath = p.replace(/(\.[^.]+)$/, `_compressed-${count}${origExt}`);
-    count++;
-  }
+  const outPath = buildAvailableOutputPath(p, outputExt, fs.existsSync);
 
   // expose outPath early so UI can stat an in-progress output file
   if (!fileStates[p]) fileStates[p] = {};
@@ -1882,6 +2552,18 @@ async function compressImage(p, buffer, ft, targetMB, onProgress) {
   // load image and metadata
   const img = sharp(buffer, { limitInputPixels: false });
   const metadata = await img.metadata();
+  fileStates[p].sourceDetails = {
+    ...(fileStates[p].sourceDetails || {}),
+    kind: "Image",
+    width: metadata.width,
+    height: metadata.height,
+    codec: metadata.format,
+  };
+  fileStates[p].sourceDetailsLoaded = true;
+  fileStates[p].processingDetails = {
+    ...(fileStates[p].processingDetails || {}),
+    outputFormat: outputExt.replace(/^\./, "").toUpperCase(),
+  };
   let width = metadata.width || null;
   let quality = 90; // starting quality for lossy formats
 
@@ -1889,23 +2571,24 @@ async function compressImage(p, buffer, ft, targetMB, onProgress) {
 
   // try multiple passes: reduce quality and/or width until under target or until limits
   for (let pass = 0; pass < 10; pass++) {
+    fileStates[p].processingDetails.stage = `Pass ${pass + 1} of 10`;
     let pipeline = img.clone();
     // reduce width progressively after first few passes
     if (width && pass > 0)
       pipeline = pipeline.resize({ width: Math.max(32, Math.round(width)) });
 
     // ensure JPEG doesn't receive alpha
-    if ((origExt === ".jpg" || origExt === ".jpeg") && metadata.hasAlpha) {
+    if ((outputExt === ".jpg" || outputExt === ".jpeg") && metadata.hasAlpha) {
       pipeline = pipeline.flatten({ background: { r: 255, g: 255, b: 255 } });
     }
 
     let data;
-    if (origExt === ".png") {
+    if (outputExt === ".png") {
       // PNG: use compressionLevel and resize attempts
       data = await pipeline
         .png({ compressionLevel: Math.min(9, 9 - Math.floor(pass / 2)) })
         .toBuffer();
-    } else if (origExt === ".webp") {
+    } else if (outputExt === ".webp") {
       data = await pipeline
         .webp({ quality: Math.max(20, Math.round(quality)) })
         .toBuffer();
@@ -1957,8 +2640,13 @@ async function compressImage(p, buffer, ft, targetMB, onProgress) {
       } catch (e) {}
       if (!fileStates[p]) fileStates[p] = {};
       fileStates[p].lastOut = outPath;
+      const reachedTarget = isWithinTarget(data.length, targetBytes);
+      fileStates[p].sizeWarning = reachedTarget
+        ? null
+        : formatSizeWarning(data.length, targetBytes);
       // leave outPath set to the final file so footer shows compressed size
-      if (onProgress) onProgress(100, "done", outPath);
+      if (onProgress)
+        onProgress(100, reachedTarget ? "done" : "done-oversize", outPath);
       return outPath;
     }
 
@@ -2006,6 +2694,10 @@ async function compressVideo(p, targetMB, onProgress, opts = {}) {
 
   // target bytes
   const targetBytes = targetMB * 1024 * 1024;
+  const attempt = Number.isInteger(opts._attempt) ? opts._attempt : 0;
+  const maxAttempts = 3;
+  const bitrateScale =
+    typeof opts._bitrateScale === "number" ? opts._bitrateScale : 1;
 
   // simple strategy: set bitrate based on file duration and target size
   const getMetadata = (src) =>
@@ -2024,6 +2716,23 @@ async function compressVideo(p, targetMB, onProgress, opts = {}) {
       : 128; // kbps fallback
   const audioCodec =
     audioStream && audioStream.codec_name ? audioStream.codec_name : null;
+  const videoStream = (meta.streams || []).find(
+    (stream) => stream.codec_type === "video"
+  );
+  fileStates[p].sourceDetails = {
+    ...(fileStates[p].sourceDetails || {}),
+    kind: "Video",
+    duration,
+    width: videoStream && videoStream.width,
+    height: videoStream && videoStream.height,
+    fps:
+      videoStream &&
+      parseFrameRate(videoStream.avg_frame_rate || videoStream.r_frame_rate),
+    videoCodec: videoStream && videoStream.codec_name,
+    audioCodec,
+    audioBitrateKbps: audioBitrate,
+  };
+  fileStates[p].sourceDetailsLoaded = true;
   // Apply priority adjustments
   const priority = opts.priority || "balanced";
   let adjAudioBitrate = audioBitrate;
@@ -2059,11 +2768,22 @@ async function compressVideo(p, targetMB, onProgress, opts = {}) {
 
   // Ensure audioAllocKbps doesn't exceed total target
   audioAllocKbps = Math.min(audioAllocKbps, Math.max(1, totalTargetKbps - 1));
+  audioAllocKbps = Math.max(8, Math.round(audioAllocKbps * bitrateScale));
 
   // Now compute video bitrate budget (kbps). Allow it to go low (>=16kbps) so
   // we can meet very small targets instead of clamping up and producing larger
   // files.
-  let videoBitrate = Math.max(16, totalTargetKbps - audioAllocKbps);
+  let videoBitrate = Math.max(
+    16,
+    Math.round((totalTargetKbps - audioAllocKbps) * bitrateScale)
+  );
+  fileStates[p].processingDetails = {
+    ...(fileStates[p].processingDetails || {}),
+    outputFormat: "MP4 (H.264/AAC)",
+    videoBitrateKbps: videoBitrate,
+    audioBitrateKbps: audioAllocKbps,
+    stage: `Attempt ${attempt + 1} of ${maxAttempts}`,
+  };
 
   return new Promise(async (resolve, reject) => {
     let cmd = ffmpeg(p);
@@ -2073,6 +2793,7 @@ async function compressVideo(p, targetMB, onProgress, opts = {}) {
     // expose outPath so the UI can stat a growing output file while ffmpeg writes
     if (!fileStates[p]) fileStates[p] = {};
     fileStates[p].outPath = outPath;
+    if (attempt > 0) fileStates[p].displayedProgress = 0;
     if (onProgress) onProgress(0, "processing", outPath);
     // build video filter to respect target resolution and preserve portrait orientation
     // targetResolution: auto / 480p / 720p / 1080p
@@ -2136,7 +2857,11 @@ async function compressVideo(p, targetMB, onProgress, opts = {}) {
     // and the user didn't force a different priority, we could copy, otherwise
     // re-encode audio to the allocated audio bitrate so the total size stays
     // within budget.
-    if (audioCodec === "aac" && adjAudioBitrate <= audioAllocKbps) {
+    if (
+      attempt === 0 &&
+      audioCodec === "aac" &&
+      adjAudioBitrate <= audioAllocKbps
+    ) {
       outOpts.push("-c:a copy");
     } else {
       // re-encode audio at the allocated audio bitrate
@@ -2192,10 +2917,43 @@ async function compressVideo(p, targetMB, onProgress, opts = {}) {
           if (onProgress) onProgress(0, "cancelled");
           return resolve(null);
         }
+        let actualBytes;
+        try {
+          actualBytes = fs.statSync(outPath).size;
+        } catch (e) {
+          return reject(new Error(`Could not verify video output size: ${e.message}`));
+        }
+        const {
+          isWithinTarget,
+          calculateRetryScale,
+          formatSizeWarning,
+        } = require("./media-utils");
+        if (
+          !isWithinTarget(actualBytes, targetBytes) &&
+          attempt + 1 < maxAttempts
+        ) {
+          const correction = calculateRetryScale(actualBytes, targetBytes);
+          try {
+            fs.unlinkSync(outPath);
+          } catch (e) {}
+          if (fileStates[p]) fileStates[p].displayedProgress = 0;
+          if (onProgress) onProgress(0, "processing");
+          compressVideo(p, targetMB, onProgress, {
+            ...opts,
+            _attempt: attempt + 1,
+            _bitrateScale: bitrateScale * correction,
+          }).then(resolve, reject);
+          return;
+        }
         if (!fileStates[p]) fileStates[p] = {};
         fileStates[p].lastOut = outPath;
+        const reachedTarget = isWithinTarget(actualBytes, targetBytes);
+        fileStates[p].sizeWarning = reachedTarget
+          ? null
+          : formatSizeWarning(actualBytes, targetBytes);
         // keep outPath set to final file so footer can stat it
-        if (onProgress) onProgress(100, "done", outPath);
+        if (onProgress)
+          onProgress(100, reachedTarget ? "done" : "done-oversize", outPath);
         resolve(outPath);
       })
       .on("error", (err) => {
@@ -2207,6 +2965,10 @@ async function compressVideo(p, targetMB, onProgress, opts = {}) {
           if (fileStates[p]) fileStates[p].outPath = null;
         } catch (e) {}
         if (fileStates[p]) fileStates[p].cmd = null;
+        if (fileStates[p] && fileStates[p].cancelRequested) {
+          if (onProgress) onProgress(0, "cancelled");
+          return resolve(null);
+        }
         reject(err);
       })
       .save(outPath);
@@ -2240,8 +3002,9 @@ async function compressAudio(p, targetMB, onProgress, opts = {}) {
     codec = "libmp3lame";
     finalExt = ".mp3";
   } else if (origExt === ".wav") {
-    codec = "pcm_s16le"; // raw PCM in WAV container
-    finalExt = ".wav";
+    // PCM cannot reliably meet a requested file size, so WAV becomes MP3.
+    codec = "libmp3lame";
+    finalExt = ".mp3";
   } else if (origExt === ".flac") {
     // convert lossless FLAC to MP3 by default to achieve smaller output
     codec = "libmp3lame";
@@ -2275,6 +3038,20 @@ async function compressAudio(p, targetMB, onProgress, opts = {}) {
   try {
     const meta = await getMetadata(p);
     duration = Math.max(1, Math.floor(meta.format.duration || 1));
+    const audioStream = (meta.streams || []).find(
+      (stream) => stream.codec_type === "audio"
+    );
+    fileStates[p].sourceDetails = {
+      ...(fileStates[p].sourceDetails || {}),
+      kind: "Audio",
+      duration,
+      audioCodec: audioStream && audioStream.codec_name,
+      audioBitrateKbps:
+        audioStream && audioStream.bit_rate
+          ? Math.round(Number(audioStream.bit_rate) / 1000)
+          : null,
+    };
+    fileStates[p].sourceDetailsLoaded = true;
   } catch (e) {
     duration = 1; // fallback to avoid divide-by-zero
   }
@@ -2287,7 +3064,19 @@ async function compressAudio(p, targetMB, onProgress, opts = {}) {
   );
 
   // final audio bitrate (kbps)
-  const audioBitrateKbps = Math.max(16, Math.round(totalTargetKbps));
+  // Keep requested rates within broadly supported encoder limits. The target
+  // is a maximum, so producing a smaller file is preferable to encoder failure.
+  const codecMaxKbps = codec === "libopus" ? 256 : 320;
+  const audioBitrateKbps = Math.max(
+    16,
+    Math.min(codecMaxKbps, Math.round(totalTargetKbps))
+  );
+  fileStates[p].processingDetails = {
+    ...(fileStates[p].processingDetails || {}),
+    outputFormat: finalExt.replace(/^\./, "").toUpperCase(),
+    audioBitrateKbps,
+    stage: "Encoding audio",
+  };
 
   return new Promise((resolve, reject) => {
     let cmd = ffmpeg(p);
@@ -2386,7 +3175,19 @@ async function compressAudio(p, targetMB, onProgress, opts = {}) {
         }
         if (!fileStates[p]) fileStates[p] = {};
         fileStates[p].lastOut = outPath;
-        if (onProgress) onProgress(100, "done", outPath);
+        let actualBytes;
+        try {
+          actualBytes = fs.statSync(outPath).size;
+        } catch (e) {
+          return reject(new Error(`Could not verify audio output size: ${e.message}`));
+        }
+        const { isWithinTarget, formatSizeWarning } = require("./media-utils");
+        const reachedTarget = isWithinTarget(actualBytes, targetBytes);
+        fileStates[p].sizeWarning = reachedTarget
+          ? null
+          : formatSizeWarning(actualBytes, targetBytes);
+        if (onProgress)
+          onProgress(100, reachedTarget ? "done" : "done-oversize", outPath);
         resolve(outPath);
       })
       .on("error", (err, stdout, stderr) => {
@@ -2395,6 +3196,10 @@ async function compressAudio(p, targetMB, onProgress, opts = {}) {
           if (fileStates[p]) fileStates[p].outPath = null;
         } catch (e) {}
         if (fileStates[p]) fileStates[p].cmd = null;
+        if (fileStates[p] && fileStates[p].cancelRequested) {
+          if (onProgress) onProgress(0, "cancelled");
+          return resolve(null);
+        }
         try {
           console.error(
             "ffmpeg audio error:",
@@ -2600,6 +3405,41 @@ async function generateVideoThumbnail(videoPath, opts = {}) {
 
 // --- FFmpeg presence check and modal wiring ---
 // Use an async check that prefers the app-resolved ffmpeg/ffprobe paths
+function checkMediaBinary(binaryPath, versionPattern) {
+  return new Promise((resolve) => {
+    try {
+      const { spawn } = require("child_process");
+      const child = spawn(binaryPath, ["-version"], {
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true,
+      });
+      let output = "";
+      const collect = (chunk) => {
+        if (output.length < 8192) output += String(chunk || "");
+      };
+      if (child.stdout) child.stdout.on("data", collect);
+      if (child.stderr) child.stderr.on("data", collect);
+      let settled = false;
+      const finish = (value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        resolve(value);
+      };
+      const timeout = setTimeout(() => {
+        try { child.kill(); } catch (e) {}
+        finish(false);
+      }, 5000);
+      child.on("error", () => finish(false));
+      child.on("close", (code) =>
+        finish(code === 0 || versionPattern.test(output))
+      );
+    } catch (e) {
+      resolve(false);
+    }
+  });
+}
+
 (async () => {
   try {
     const ffmpegModal = document.getElementById("ffmpegModal");
@@ -2612,34 +3452,16 @@ async function generateVideoThumbnail(videoPath, opts = {}) {
     try {
       const fp = await getFfmpegPath();
       if (fp) {
-        try {
-          const child = require("child_process");
-          const resolved = resolveBinaryPath(fp) || fp;
-          const r = child.spawnSync(resolved, ["-version"], {
-            encoding: "utf8",
-          });
-          ffmpegFound = !!(
-            r &&
-            (r.status === 0 || /ffmpeg version/i.test(r.stdout || ""))
-          );
-        } catch (e) {}
+        const resolved = resolveBinaryPath(fp) || fp;
+        ffmpegFound = await checkMediaBinary(resolved, /ffmpeg version/i);
       }
     } catch (e) {}
 
     try {
       const pp = await getFfprobePath();
       if (pp) {
-        try {
-          const child = require("child_process");
-          const resolved = resolveBinaryPath(pp) || pp;
-          const r2 = child.spawnSync(resolved, ["-version"], {
-            encoding: "utf8",
-          });
-          ffprobeFound = !!(
-            r2 &&
-            (r2.status === 0 || /ffprobe version/i.test(r2.stdout || ""))
-          );
-        } catch (e) {}
+        const resolved = resolveBinaryPath(pp) || pp;
+        ffprobeFound = await checkMediaBinary(resolved, /ffprobe version/i);
       }
     } catch (e) {}
 

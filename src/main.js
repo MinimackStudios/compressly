@@ -31,7 +31,10 @@ function createWindow() {
   // Read persisted preference: whether to use the custom frameless titlebar on Windows.
   // Default: true (use custom frameless titlebar)
   let useCustomTitlebar = true;
+  let savedTheme = "light";
   try {
+    const theme = store.get("theme");
+    if (theme === "dark" || theme === "light") savedTheme = theme;
     if (isWindows) {
       const v = store.get("useCustomTitlebar");
       if (typeof v === "boolean") useCustomTitlebar = v;
@@ -48,7 +51,7 @@ function createWindow() {
     // bundle icon configured by the packager instead of a runtime .icns file.
     icon: isWindows ? path.join(__dirname, "compressly.ico") : undefined,
     autoHideMenuBar: true,
-    backgroundColor: "#f6f8fa",
+    backgroundColor: savedTheme === "dark" ? "#0b1020" : "#f6f8fa",
     // If we're on macOS, use the native titlebar. On Windows allow the
     // persisted preference to opt-out of the custom frameless titlebar.
     frame: isMac ? true : isWindows ? !useCustomTitlebar : false,
@@ -468,6 +471,9 @@ ipcMain.handle("select-files", async (event) => {
           "jpeg",
           "png",
           "webp",
+          "bmp",
+          "tif",
+          "tiff",
           "gif",
           "mp4",
           "mov",
@@ -597,69 +603,6 @@ ipcMain.on("apply-titlebar-setting", (event, enabled) => {
     // Relaunch the app; quit current instance so new frame option is used.
     app.relaunch();
     app.exit(0);
-  } catch (e) {}
-});
-
-// Run an installer executable (path provided by renderer) detached and then quit the app
-// On macOS, DMG/PKG should be opened via the 'open' command (not spawned directly).
-ipcMain.on("run-installer-and-exit", (event, installerPath, args = []) => {
-  try {
-    const { spawn } = require("child_process");
-    const pathModule = require("path");
-    // Normalize args to array
-    const argv = Array.isArray(args) ? args : [];
-    const ext =
-      (installerPath && pathModule.extname(installerPath).toLowerCase()) || "";
-
-    // Platform-specific handling
-    if (process.platform === "darwin" && (ext === ".dmg" || ext === ".pkg")) {
-      // Use the 'open' command to mount/run DMG or open PKG with installer
-      try {
-        const child = spawn("open", [installerPath, ...argv], {
-          detached: true,
-          stdio: "ignore",
-        });
-        try {
-          child.unref();
-        } catch (e) {}
-      } catch (e) {
-        console.warn("failed to open dmg/pkg with 'open'", e);
-      }
-    } else if (process.platform === "win32" && ext === ".msi") {
-      // Use msiexec for MSI installers on Windows
-      try {
-        const child = spawn("msiexec", ["/i", installerPath, ...argv], {
-          detached: true,
-          stdio: "ignore",
-          windowsHide: false,
-        });
-        try {
-          child.unref();
-        } catch (e) {}
-      } catch (e) {
-        console.warn("failed to launch msi with msiexec", e);
-      }
-    } else {
-      // Default: attempt to spawn the installer directly (for .exe, .msi, etc.)
-      try {
-        const child = spawn(installerPath, argv, {
-          detached: true,
-          stdio: "ignore",
-          windowsHide: false,
-        });
-        try {
-          child.unref();
-        } catch (e) {}
-      } catch (e) {
-        console.warn("failed to launch installer directly", e);
-      }
-    }
-  } catch (e) {
-    console.warn("failed to launch installer", e);
-  }
-  try {
-    // Quit the app immediately so the installer can proceed
-    app.quit();
   } catch (e) {}
 });
 

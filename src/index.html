@@ -5,6 +5,14 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Compressly</title>
+    <script>
+      // Establish persisted appearance before CSS and content paint.
+      document.documentElement.classList.add("booting");
+      try {
+        if (localStorage.getItem("themeDark") === "1")
+          document.documentElement.classList.add("startup-dark");
+      } catch (e) {}
+    </script>
     <link rel="icon" href="./compressly.ico" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
@@ -12,6 +20,10 @@
     <script>
       // If running under Electron, apply a platform class early so CSS can adapt.
       try {
+        if (document.documentElement.classList.contains("startup-dark"))
+          document.body.classList.add("dark");
+        if (localStorage.getItem("liteMode") === "1")
+          document.body.classList.add("lite-mode");
         if (
           typeof window !== "undefined" &&
           window.electronAPI &&
@@ -27,6 +39,10 @@
         <span class="blob b1"></span>
         <span class="blob b2"></span>
         <span class="blob b3"></span>
+        <span class="blob smart-blob b4"></span>
+        <span class="blob smart-blob b5"></span>
+        <span class="blob smart-blob b6"></span>
+        <span class="blob smart-blob b7"></span>
       </div>
       <!-- Custom titlebar (frameless window) -->
       <div class="titlebar" role="toolbar" aria-label="Window controls">
@@ -81,36 +97,67 @@
             >
               About
             </button>
+            <button id="smartModeBtn" class="btn smart-launch-btn" type="button">
+              Smart <span aria-hidden="true">✦</span>
+            </button>
           </div>
         </div>
       </header>
 
       <main class="container">
+        <section id="smartHero" class="smart-hero">
+          <button id="standardModeBtn" class="btn smart-exit-btn" type="button">
+            ← Back
+          </button>
+          <div class="smart-hero-copy">
+            <div class="smart-eyebrow"><span>✦</span> Intelligent media optimization</div>
+            <h1>Smart Compression</h1>
+            <p id="modeDescription">
+              Make files meaningfully smaller while preserving the details,
+              motion, and sound that matter.
+            </p>
+          </div>
+          <div class="smart-hero-orbit" aria-hidden="true">
+            <div class="smart-orb-core">✦</div>
+            <span class="orbit-dot dot-one"></span>
+            <span class="orbit-dot dot-two"></span>
+          </div>
+        </section>
         <section class="controls">
           <button id="pick" class="btn primary">Select Files</button>
-          <div class="options">
-            <label>
-              <span class="target-label">Target size (MB)</span>
-              <input
-                id="targetSize"
-                class="target-input"
-                type="number"
-                min="1"
-                max="50"
-                value="10"
-              />
-            </label>
+          <div id="standardOptions" class="options mode-options active">
+            <div class="control-field target-size-field">
+              <span class="control-label">Target size</span>
+              <div id="targetSizeControl" class="setting-selector-row">
+                <select id="targetSizePreset" class="priority-select setting-preset-select">
+                  <option value="1">1 MB</option>
+                  <option value="5">5 MB</option>
+                  <option value="10" selected>10 MB</option>
+                  <option value="25">25 MB</option>
+                  <option value="50">50 MB</option>
+                  <option value="100">100 MB</option>
+                  <option value="custom">Custom</option>
+                </select>
+                <button id="targetCustomClose" class="custom-close-btn" type="button" aria-label="Close custom target size">×</button>
+                <input id="targetSize" class="target-input custom-setting-input" type="number" min="0.01" step="0.01" value="10" aria-label="Custom target size in MB" />
+              </div>
+            </div>
 
-            <label>
-              <span class="fps-label">FPS</span>
-              <input
-                id="videoFps"
-                class="fps-input"
-                type="number"
-                min="1"
-                max="120"
-                value="30"
-              />
+            <label class="control-field">
+              <span class="control-label">FPS</span>
+              <div id="videoFpsControl" class="setting-selector-row">
+                <select id="videoFpsPreset" class="priority-select setting-preset-select">
+                  <option value="24">24</option>
+                  <option value="25">25</option>
+                  <option value="30" selected>30</option>
+                  <option value="50">50</option>
+                  <option value="60">60</option>
+                  <option value="120">120</option>
+                  <option value="custom">Custom</option>
+                </select>
+                <button id="fpsCustomClose" class="custom-close-btn" type="button" aria-label="Close custom FPS">×</button>
+                <input id="videoFps" class="fps-input custom-setting-input" type="number" min="1" max="120" step="1" value="30" aria-label="Custom frames per second" />
+              </div>
             </label>
 
             <label class="select-label">
@@ -135,11 +182,33 @@
               </select>
             </label>
           </div>
+          <div id="smartOptions" class="smart-options mode-options">
+            <label class="control-field smart-quality-field">
+              <span class="control-label">Quality profile</span>
+              <select id="smartQuality" class="priority-select">
+                <option value="fidelity">Maximum fidelity</option>
+                <option value="balanced" selected>Balanced</option>
+                <option value="compact">Smaller file</option>
+              </select>
+            </label>
+            <label class="smart-toggle"><input id="smartRetainResolution" type="checkbox" checked /><span></span><div><strong>Retain resolution</strong><small>Keep original dimensions</small></div></label>
+            <label class="smart-toggle"><input id="smartRetainFps" type="checkbox" checked /><span></span><div><strong>Retain FPS</strong><small>Preserve motion cadence</small></div></label>
+            <label class="smart-toggle"><input id="smartPreserveAudio" type="checkbox" checked /><span></span><div><strong>Preserve audio</strong><small>Favor source sound quality</small></div></label>
+            <label class="smart-toggle"><input id="smartStripMetadata" type="checkbox" checked /><span></span><div><strong>Strip metadata</strong><small>Remove unnecessary data</small></div></label>
+          </div>
         </section>
 
         <section class="list" id="dropArea">
           <div class="drop-hint small">
             Drag & drop files here, or click "Select Files"
+          </div>
+          <div class="smart-drop-prompt">
+            <div class="smart-drop-icon" aria-hidden="true">＋</div>
+            <div class="smart-drop-copy">
+              <strong>Bring your media in</strong>
+              <span>Drop files here or browse from your computer</span>
+            </div>
+            <button id="smartPick" class="btn primary" type="button">Choose media</button>
           </div>
           <ul id="fileList"></ul>
         </section>
@@ -421,6 +490,53 @@
           </div>
         </div>
       </div>
+
+      <section id="detailView" class="detail-view" aria-hidden="true">
+        <div class="detail-shell">
+          <header class="detail-header">
+            <button id="detailBack" class="btn detail-back" type="button">← Back</button>
+            <div class="detail-heading">
+              <div class="small detail-kicker">Detailed View</div>
+              <h2 id="detailName">File details</h2>
+              <div id="detailPath" class="small detail-path"></div>
+            </div>
+            <div id="detailStatus" class="detail-status">Ready</div>
+          </header>
+
+          <div class="detail-progress-card detail-card">
+            <div class="detail-progress-heading">
+              <span id="detailProgressLabel">Ready</span>
+              <strong id="detailProgressPct">0%</strong>
+            </div>
+            <div class="detail-progress-track"><i id="detailProgressBar"></i></div>
+            <div class="detail-live-stats">
+              <span>Elapsed <strong id="detailElapsed">—</strong></span>
+              <span>Current output <strong id="detailCurrentSize">—</strong></span>
+              <span>Attempt/pass <strong id="detailAttempt">—</strong></span>
+            </div>
+          </div>
+
+          <div class="detail-grid">
+            <article class="detail-card">
+              <h3>Source</h3>
+              <dl id="detailSource"></dl>
+            </article>
+            <article class="detail-card">
+              <h3>Compression settings</h3>
+              <dl id="detailSettings"></dl>
+            </article>
+            <article class="detail-card detail-result-card">
+              <h3>Result</h3>
+              <dl id="detailResult"></dl>
+            </article>
+          </div>
+
+          <footer class="detail-footer">
+            <button id="detailCancel" class="btn" type="button">Cancel compression</button>
+            <button id="detailReveal" class="btn primary" type="button">Reveal output</button>
+          </footer>
+        </div>
+      </section>
     </div>
 
     <script src="./renderer.js"></script>
