@@ -1687,6 +1687,39 @@ body.dark.smart-mode .drop-hint {
   cursor: default !important;
 }
 
+/* Native-feeling, high-contrast actions in the light Detailed View. */
+body:not(.dark) #detailBack,
+body:not(.dark) #detailCancel {
+  color: #334155;
+  background: #ffffff;
+  border: 1px solid rgba(100, 116, 139, .32);
+  box-shadow: 0 5px 16px rgba(15, 23, 42, .1);
+}
+body:not(.dark) #detailBack:hover {
+  color: #1e1b4b;
+  border-color: rgba(79, 70, 229, .42);
+  background: #f8f7ff;
+}
+body:not(.dark) #detailCancel {
+  color: #b42318;
+  border-color: rgba(220, 38, 38, .25);
+  background: #fffafa;
+}
+body:not(.dark) #detailCancel:hover {
+  color: #991b1b;
+  border-color: rgba(220, 38, 38, .42);
+  background: #fff1f2;
+}
+
+/* Window chrome must remain fully interactive regardless of processing state. */
+#win-min,
+#win-max,
+#win-close {
+  opacity: 1 !important;
+  filter: none !important;
+  pointer-events: auto !important;
+}
+
 /* Smart workspace layout refinement */
 .smart-blob { display: none; }
 body.smart-mode .bg-blobs {

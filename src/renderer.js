@@ -44,6 +44,9 @@ function setGlobalProcessingLock(on) {
       "#detailBack",
       "#detailCancel",
       "#detailReveal",
+      "#win-min",
+      "#win-max",
+      "#win-close",
     ];
     // Find all interactive controls
     const controls = Array.from(
