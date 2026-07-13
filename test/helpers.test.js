@@ -15,6 +15,9 @@ const {
   selectPreset,
   getSmartQualitySettings,
   getMediaDetailCapabilities,
+  parseSsimOutput,
+  getSsimSampleTimestamps,
+  summarizeSmartBatch,
 } = require("../src/media-utils");
 const { selectReleaseAsset, verifyAssetDigest } = require("../src/update-utils");
 
@@ -104,4 +107,45 @@ test("detail capabilities keep video-only information on videos", () => {
   assert.equal(audio.videoCodec, false);
   assert.equal(audio.audio, true);
   assert.equal(audio.duration, true);
+});
+
+test("SSIM output and bounded sample timestamps are parsed consistently", () => {
+  assert.equal(parseSsimOutput("SSIM Y:0.98 All:0.987320 (18.9)"), 0.98732);
+  assert.equal(parseSsimOutput("no metric"), null);
+  assert.deepEqual(getSsimSampleTimestamps(2), [0.5, 1, 1.5]);
+  assert.deepEqual(getSsimSampleTimestamps(10), [1, 3, 5, 7, 9]);
+  assert.deepEqual(getSsimSampleTimestamps(0), []);
+});
+
+test("Smart batch summaries use successful outputs and measured visual files", () => {
+  const summary = summarizeSmartBatch([
+    { status: "done", originalBytes: 1000, outputBytes: 600, similarity: 98 },
+    { status: "done", originalBytes: 3000, outputBytes: 1200, similarity: 96 },
+    { status: "done", originalBytes: 500, outputBytes: 250, similarity: null },
+    { status: "error", originalBytes: 500 },
+    { status: "cancelled", originalBytes: 500 },
+  ], 12.5);
+  assert.equal(summary.successful, 3);
+  assert.equal(summary.failed, 1);
+  assert.equal(summary.cancelled, 1);
+  assert.equal(summary.originalBytes, 4500);
+  assert.equal(summary.outputBytes, 2050);
+  assert.equal(summary.bytesSaved, 2450);
+  assert.equal(summary.reductionPercent.toFixed(1), "54.4");
+  assert.equal(summary.visualSimilarity, 97);
+  assert.equal(summary.visualDifference, 3);
+  assert.equal(summary.measuredVisualFiles, 2);
+  assert.equal(summary.elapsedSeconds, 12.5);
+
+  const larger = summarizeSmartBatch([
+    { status: "done", originalBytes: 100, outputBytes: 125, similarity: null },
+  ]);
+  assert.equal(larger.bytesSaved, -25);
+  assert.equal(larger.reductionPercent, -25);
+  assert.equal(larger.visualSimilarity, null);
+
+  const empty = summarizeSmartBatch([
+    { status: "done", originalBytes: 0, outputBytes: 0, similarity: null },
+  ]);
+  assert.equal(empty.reductionPercent, null);
 });

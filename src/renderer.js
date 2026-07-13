@@ -25,6 +25,8 @@ const smartRetainResolutionEl = document.getElementById("smartRetainResolution")
 const smartRetainFpsEl = document.getElementById("smartRetainFps");
 const smartPreserveAudioEl = document.getElementById("smartPreserveAudio");
 const smartStripMetadataEl = document.getElementById("smartStripMetadata");
+const smartResultsViewEl = document.getElementById("smartResultsView");
+const smartResultsListEl = document.getElementById("smartResultsList");
 let compressionMode = "standard";
 
 // Window control buttons for custom titlebar (only present in frameless mode)
@@ -560,6 +562,9 @@ const {
   isValidTargetSize,
   isValidFps,
   getMediaDetailCapabilities,
+  parseSsimOutput,
+  getSsimSampleTimestamps,
+  summarizeSmartBatch,
 } = require("./media-utils");
 
 function persistSetting(key, value) {
@@ -584,6 +589,8 @@ function persistSmartOptions() {
 
 function setCompressionMode(mode, animate = true) {
   const nextMode = mode === "smart" ? "smart" : "standard";
+  const leavingSmartMode = compressionMode === "smart" && nextMode === "standard";
+  if (nextMode !== "smart") closeSmartResultsView();
   const allowMotion =
     animate &&
     !document.body.classList.contains("lite-mode") &&
@@ -613,6 +620,7 @@ function setCompressionMode(mode, animate = true) {
   document.body.classList.toggle("smart-mode", smart);
   standardOptionsEl.classList.toggle("active", !smart);
   smartOptionsEl.classList.toggle("active", smart);
+  if (leavingSmartMode) removeSmartBatchFilesFromRegularQueue();
   const incoming = smart ? smartOptionsEl : standardOptionsEl;
   if (allowMotion && smart) {
     incoming.classList.add("entering");
@@ -769,6 +777,7 @@ requestAnimationFrame(() => {
 let files = [];
 let fileStates = {}; // track per-file progress and status
 let anyCancelled = false;
+let smartBatchSummary = null;
 
 // --- Update check with caching; auto-download to Downloads when user clicks Download ---
 try {
@@ -1098,6 +1107,139 @@ const IMAGE_EXTS = [
 const VIDEO_EXTS = [".mp4", ".mov", ".mkv", ".avi", ".webm", ".flv", ".wmv"];
 const AUDIO_EXTS = [".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".opus"];
 
+const SSIM_FILTER = [
+  "color=c=white:s=1280x720[base0]",
+  "color=c=white:s=1280x720[base1]",
+  "[0:v]format=rgba,scale=1280:720:force_original_aspect_ratio=decrease[scaled0]",
+  "[1:v]format=rgba,scale=1280:720:force_original_aspect_ratio=decrease[scaled1]",
+  "[base0][scaled0]overlay=(W-w)/2:(H-h)/2:shortest=1,setsar=1,format=yuv420p[ref]",
+  "[base1][scaled1]overlay=(W-w)/2:(H-h)/2:shortest=1,setsar=1,format=yuv420p[dist]",
+  "[dist][ref]ssim",
+].join(";");
+
+async function runSsimSample(sourcePath, outputPath, timestamp = null) {
+  const { spawn } = require("child_process");
+  const ffmpegPath = resolveBinaryPath(await getFfmpegPath());
+  const seek = timestamp === null ? [] : ["-ss", String(timestamp)];
+  const args = [
+    "-hide_banner",
+    ...seek,
+    "-i", sourcePath,
+    ...seek,
+    "-i", outputPath,
+    "-filter_complex", SSIM_FILTER,
+    "-frames:v", "1",
+    "-f", "null",
+    "-",
+  ];
+
+  return await new Promise((resolve) => {
+    let stderr = "";
+    let finished = false;
+    const child = spawn(ffmpegPath, args, { windowsHide: true });
+    const finish = (value) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      resolve(value);
+    };
+    const timer = setTimeout(() => {
+      try { child.kill("SIGKILL"); } catch (e) {}
+      finish(null);
+    }, 15000);
+    child.stderr.on("data", (chunk) => {
+      if (stderr.length < 200000) stderr += String(chunk);
+    });
+    child.on("error", () => finish(null));
+    child.on("close", () => finish(parseSsimOutput(stderr)));
+  });
+}
+
+async function analyzeSmartFileQuality(filePath) {
+  const fs = require("fs");
+  const state = fileStates[filePath];
+  if (!state || !state.lastOut || !fs.existsSync(state.lastOut)) return;
+  const kind = (state.sourceDetails && state.sourceDetails.kind) || mediaKindForPath(filePath);
+  state.resultDetails = state.resultDetails || {};
+
+  if (kind === "Audio") {
+    state.resultDetails.qualityAnalysis = {
+      status: "not-applicable",
+      reason: "Audio is reported using encoding facts",
+    };
+    return;
+  }
+  if (kind !== "Image" && kind !== "Video") return;
+
+  state.resultDetails.qualityAnalysis = { status: "analyzing" };
+  const timestamps = kind === "Video"
+    ? getSsimSampleTimestamps(state.sourceDetails && state.sourceDetails.duration)
+    : [null];
+  if (!timestamps.length) {
+    state.resultDetails.qualityAnalysis = {
+      status: "unavailable",
+      reason: "Source duration is unavailable",
+    };
+    return;
+  }
+
+  const scores = [];
+  for (const timestamp of timestamps) {
+    try {
+      const score = await runSsimSample(filePath, state.lastOut, timestamp);
+      if (score !== null) scores.push(score);
+    } catch (e) {}
+  }
+  if (!scores.length) {
+    state.resultDetails.qualityAnalysis = {
+      status: "unavailable",
+      reason: "Visual comparison could not be completed",
+      attemptedSamples: timestamps.length,
+    };
+    return;
+  }
+
+  const similarity =
+    (scores.reduce((sum, value) => sum + value, 0) / scores.length) * 100;
+  state.resultDetails.qualityAnalysis = {
+    status: "complete",
+    metric: "SSIM",
+    similarity,
+    difference: Math.max(0, 100 - similarity),
+    samples: scores.length,
+    attemptedSamples: timestamps.length,
+  };
+}
+
+async function analyzeSmartBatch(batchFiles) {
+  const successful = batchFiles.filter((filePath) => {
+    const state = fileStates[filePath];
+    return state && (state.status === "done" || state.status === "done-oversize");
+  });
+  const visualFiles = successful.filter((filePath) => {
+    const state = fileStates[filePath];
+    const kind = state && state.sourceDetails && state.sourceDetails.kind;
+    return kind === "Image" || kind === "Video";
+  });
+  successful
+    .filter((filePath) => !visualFiles.includes(filePath))
+    .forEach((filePath) => {
+      const state = fileStates[filePath];
+      if (!state) return;
+      state.resultDetails = state.resultDetails || {};
+      state.resultDetails.qualityAnalysis = {
+        status: "not-applicable",
+        reason: "Audio is reported using encoding facts",
+      };
+    });
+  if (!visualFiles.length) statusEl.textContent = "Preparing results…";
+  for (let index = 0; index < visualFiles.length; index += 1) {
+    statusEl.textContent = `Analyzing visual quality… ${index + 1} of ${visualFiles.length}`;
+    await analyzeSmartFileQuality(visualFiles[index]);
+    updateDetailedView();
+  }
+}
+
 // File.path was removed by Electron 32. Keep the old-property fallback so
 // development with older Electron versions continues to work.
 function getLocalFilePath(file) {
@@ -1347,6 +1489,8 @@ if (dropArea) {
   // Clear list handler
   if (clearBtn) {
     clearBtn.addEventListener("click", () => {
+      closeSmartResultsView();
+      smartBatchSummary = null;
       files = [];
       fileStates = {};
       anyCancelled = false;
@@ -1685,13 +1829,23 @@ function updateDetailedView() {
           : state.status === "error"
             ? "Failed"
             : "Pending";
-  setDetailRows("detailResult", [
+  const resultRows = [
     ["Target result", targetResult],
     ["Output size", result.outputBytes === undefined ? "Pending" : formatBytes(result.outputBytes)],
     ["Reduction", result.outputBytes === undefined ? "Pending" : formatReduction(originalBytes, result.outputBytes)],
     ["Output path", state.lastOut || state.outPath || "Pending"],
     ["Error", result.error],
-  ]);
+  ];
+  if (result.qualityAnalysis && result.qualityAnalysis.status === "complete") {
+    resultRows.push(["Visual similarity", `${result.qualityAnalysis.similarity.toFixed(1)}% sampled SSIM`]);
+    resultRows.push(["Measured difference", `${result.qualityAnalysis.difference.toFixed(1)}%`]);
+  }
+  if (result.audioResult) {
+    resultRows.push(["Audio handling", result.audioResult.handling]);
+    if (result.audioResult.codec)
+      resultRows.push(["Output audio", `${result.audioResult.codec}${result.audioResult.bitrateKbps ? ` · ${result.audioResult.bitrateKbps} kbps` : ""}`]);
+  }
+  setDetailRows("detailResult", resultRows);
 
   const active = state.status === "queued" || state.status === "processing";
   const cancel = document.getElementById("detailCancel");
@@ -1739,6 +1893,242 @@ document.getElementById("detailReveal").addEventListener("click", () => {
 });
 window.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && detailedFilePath) closeDetailedView();
+});
+
+function closeSmartResultsView() {
+  smartResultsViewEl.classList.remove("visible");
+  smartResultsViewEl.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("smart-results-open");
+}
+
+function removeSmartBatchFilesFromRegularQueue() {
+  const smartBatchFiles = files.filter((filePath) => {
+    const state = fileStates[filePath];
+    return !!(
+      state &&
+      state.settingsSnapshot &&
+      state.settingsSnapshot.mode === "Smart Compression" &&
+      (state.status === "done" || state.status === "done-oversize")
+    );
+  });
+  if (!smartBatchFiles.length) return;
+  const removed = new Set(smartBatchFiles);
+  files = files.filter((filePath) => !removed.has(filePath));
+  smartBatchFiles.forEach((filePath) => delete fileStates[filePath]);
+  smartBatchSummary = null;
+  statusEl.textContent = "Ready";
+  renderList();
+  updateFooterInfo();
+}
+
+function getSmartBatchEntry(filePath) {
+  const fs = require("fs");
+  const state = fileStates[filePath] || {};
+  let originalBytes = state.sourceDetails && state.sourceDetails.originalBytes;
+  let outputBytes = state.resultDetails && state.resultDetails.outputBytes;
+  try {
+    if (!(originalBytes >= 0)) originalBytes = fs.statSync(filePath).size;
+  } catch (e) {}
+  try {
+    if (!(outputBytes >= 0) && state.lastOut)
+      outputBytes = fs.statSync(state.lastOut).size;
+  } catch (e) {}
+  const quality = state.resultDetails && state.resultDetails.qualityAnalysis;
+  return {
+    filePath,
+    status: state.status,
+    originalBytes,
+    outputBytes,
+    similarity: quality && quality.status === "complete" ? quality.similarity : null,
+  };
+}
+
+function buildSmartBatchSummary(batchFiles, startedAt) {
+  const entries = batchFiles.map(getSmartBatchEntry);
+  const aggregate = summarizeSmartBatch(
+    entries,
+    (Date.now() - startedAt) / 1000
+  );
+  return {
+    ...aggregate,
+    files: batchFiles.slice(),
+    firstOutput: batchFiles
+      .map((filePath) => fileStates[filePath] && fileStates[filePath].lastOut)
+      .find(Boolean) || null,
+  };
+}
+
+function makeSmartResultButton(label, onClick, primary = false) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `btn${primary ? " primary" : ""}`;
+  button.textContent = label;
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+function renderSmartResultRow(filePath) {
+  const path = require("path");
+  const state = fileStates[filePath] || {};
+  const source = state.sourceDetails || {};
+  const result = state.resultDetails || {};
+  const quality = result.qualityAnalysis || {};
+  const originalBytes = getSmartBatchEntry(filePath).originalBytes;
+  const outputBytes = getSmartBatchEntry(filePath).outputBytes;
+  const kind = source.kind || mediaKindForPath(filePath);
+  const row = document.createElement("div");
+  row.className = "smart-result-row";
+
+  const file = document.createElement("div");
+  file.className = "smart-result-file";
+  const thumbnailPath = state.thumb || (kind === "Image" ? filePath : null);
+  let thumbnail;
+  if (thumbnailPath) {
+    thumbnail = document.createElement("img");
+    thumbnail.src = `file://${thumbnailPath}`;
+  } else {
+    thumbnail = document.createElement("div");
+    thumbnail.className = "smart-result-thumb";
+    thumbnail.textContent = kind === "Audio" ? "♪" : kind === "Video" ? "▶" : "◆";
+  }
+  const identity = document.createElement("div");
+  const name = document.createElement("strong");
+  name.textContent = path.basename(filePath);
+  const status = document.createElement("span");
+  status.textContent = state.status === "done"
+    ? `${kind} · Complete`
+    : state.status === "error"
+      ? `${kind} · Failed`
+      : state.status === "cancelled"
+        ? `${kind} · Cancelled`
+        : `${kind} · ${state.status || "Unknown"}`;
+  identity.append(name, status);
+  file.append(thumbnail, identity);
+
+  const size = document.createElement("div");
+  size.className = "smart-result-size";
+  const sizeValue = document.createElement("strong");
+  sizeValue.textContent = outputBytes >= 0
+    ? `${formatDashboardBytes(originalBytes)} → ${formatDashboardBytes(outputBytes)}`
+    : formatDashboardBytes(originalBytes);
+  const reduction = originalBytes > 0 && outputBytes >= 0
+    ? (1 - outputBytes / originalBytes) * 100
+    : null;
+  const sizeLabel = document.createElement("span");
+  sizeLabel.textContent = reduction === null
+    ? "No output size"
+    : reduction >= 0
+      ? `${reduction.toFixed(1)}% smaller`
+      : `${Math.abs(reduction).toFixed(1)}% larger`;
+  const savingTrack = document.createElement("div");
+  savingTrack.className = "smart-result-saving-track";
+  const savingFill = document.createElement("i");
+  savingFill.style.width = `${Math.max(0, Math.min(100, reduction || 0))}%`;
+  savingTrack.appendChild(savingFill);
+  size.append(sizeValue, sizeLabel, savingTrack);
+
+  const qualityEl = document.createElement("div");
+  qualityEl.className = "smart-result-quality";
+  const qualityValue = document.createElement("strong");
+  const qualityNote = document.createElement("span");
+  if (quality.status === "complete") {
+    qualityValue.textContent = `${quality.similarity.toFixed(1)}% visual similarity`;
+    qualityNote.textContent = `${quality.difference.toFixed(1)}% measured difference · ${quality.samples} ${quality.samples === 1 ? "sample" : "samples"}`;
+  } else if (result.audioResult) {
+    const audio = result.audioResult;
+    qualityValue.textContent = audio.handling;
+    qualityNote.textContent = audio.codec
+      ? `${audio.codec}${audio.bitrateKbps ? ` · ${audio.bitrateKbps} kbps` : ""}`
+      : "No audio stream was present";
+  } else if (state.status === "error") {
+    qualityValue.textContent = "Compression failed";
+    qualityNote.textContent = result.error || "No output was produced";
+  } else if (state.status === "cancelled") {
+    qualityValue.textContent = "Cancelled";
+    qualityNote.textContent = "No comparison was performed";
+  } else {
+    qualityValue.textContent = "Comparison unavailable";
+    qualityNote.textContent = quality.reason || "No visual score was produced";
+  }
+  qualityEl.append(qualityValue, qualityNote);
+
+  const actions = document.createElement("div");
+  actions.className = "smart-result-actions";
+  actions.appendChild(makeSmartResultButton("Details", () => openDetailedView(filePath)));
+  if (state.lastOut) {
+    actions.appendChild(makeSmartResultButton("Reveal", () => {
+      require("electron").ipcRenderer.send("reveal-file", state.lastOut);
+    }));
+  }
+
+  row.append(file, size, qualityEl, actions);
+  return row;
+}
+
+function formatDashboardBytes(bytes) {
+  return require("./media-utils").formatBytes(bytes);
+}
+
+function showSmartResults(summary) {
+  smartBatchSummary = summary;
+  const reduction = summary.reductionPercent;
+  document.getElementById("smartResultsSubtitle").textContent =
+    `${summary.successful} of ${summary.total} files completed successfully.`;
+  document.getElementById("smartResultsStatus").textContent =
+    summary.failed || summary.cancelled ? "Completed with issues" : "Complete";
+  document.getElementById("smartResultsReduction").textContent = reduction === null
+    ? "—"
+    : reduction >= 0
+      ? `${reduction.toFixed(1)}% smaller`
+      : `${Math.abs(reduction).toFixed(1)}% larger`;
+  document.getElementById("smartResultsBefore").textContent = formatDashboardBytes(summary.originalBytes);
+  document.getElementById("smartResultsAfter").textContent = formatDashboardBytes(summary.outputBytes);
+  document.getElementById("smartResultsSaved").textContent = summary.bytesSaved >= 0
+    ? `${formatDashboardBytes(summary.bytesSaved)} saved`
+    : `${formatDashboardBytes(Math.abs(summary.bytesSaved))} larger than the source`;
+  const afterRatio = summary.originalBytes > 0
+    ? Math.min(100, (summary.outputBytes / summary.originalBytes) * 100)
+    : 0;
+  document.getElementById("smartResultsAfterBar").style.width = `${afterRatio}%`;
+
+  const similarity = summary.visualSimilarity;
+  const ring = document.getElementById("smartQualityRing");
+  ring.style.setProperty("--quality-angle", `${similarity === null ? 0 : similarity * 3.6}deg`);
+  ring.classList.toggle("unavailable", similarity === null);
+  document.getElementById("smartResultsSimilarity").textContent =
+    similarity === null ? "—" : `${similarity.toFixed(1)}%`;
+  document.getElementById("smartResultsDifference").textContent = similarity === null
+    ? "No image or video comparison was available."
+    : `${summary.visualDifference.toFixed(1)}% measured difference across ${summary.measuredVisualFiles} visual ${summary.measuredVisualFiles === 1 ? "file" : "files"}.`;
+  document.getElementById("smartResultsProcessed").textContent = `${summary.successful}/${summary.total}`;
+  document.getElementById("smartResultsElapsed").textContent = require("./media-utils").formatDuration(summary.elapsedSeconds);
+  document.getElementById("smartResultsFailed").textContent = String(summary.failed);
+  document.getElementById("smartResultsCancelled").textContent = String(summary.cancelled);
+
+  smartResultsListEl.replaceChildren();
+  summary.files.forEach((filePath) =>
+    smartResultsListEl.appendChild(renderSmartResultRow(filePath))
+  );
+  document.getElementById("smartResultsReveal").disabled = !summary.firstOutput;
+  smartResultsViewEl.classList.add("visible");
+  smartResultsViewEl.setAttribute("aria-hidden", "false");
+  document.body.classList.add("smart-results-open");
+}
+
+document.getElementById("smartResultsBack").addEventListener("click", closeSmartResultsView);
+document.getElementById("smartResultsReveal").addEventListener("click", () => {
+  if (smartBatchSummary && smartBatchSummary.firstOutput)
+    require("electron").ipcRenderer.send("reveal-file", smartBatchSummary.firstOutput);
+});
+document.getElementById("smartResultsMore").addEventListener("click", () => {
+  closeSmartResultsView();
+  smartBatchSummary = null;
+  files = [];
+  fileStates = {};
+  anyCancelled = false;
+  statusEl.textContent = "Ready for more media";
+  renderList();
+  updateFooterInfo();
 });
 
 function renderList() {
@@ -2173,8 +2563,13 @@ function renderList() {
 
 startBtn.addEventListener("click", async () => {
   if (files.length === 0) return alert("No files selected");
+  const batchMode = compressionMode;
+  const batchStartedAt = Date.now();
+  const batchFiles = files.slice();
+  smartBatchSummary = null;
+  closeSmartResultsView();
   statusEl.textContent =
-    compressionMode === "smart" ? "Smart compression in progress..." : "Compressing...";
+    batchMode === "smart" ? "Smart compression in progress..." : "Compressing...";
   // Lock UI globally (except About, Lite, Theme)
   try {
     setGlobalProcessingLock(true);
@@ -2185,7 +2580,7 @@ startBtn.addEventListener("click", async () => {
   let anyOversize = false;
   let firstOutDir = null;
   let firstOutPath = null;
-  for (const p of files.slice()) {
+  for (const p of batchFiles) {
     // use copy since files can be removed
     try {
       // mark this file as queued so the UI enables cancel immediately
@@ -2248,6 +2643,16 @@ startBtn.addEventListener("click", async () => {
     }
   }
 
+  if (batchMode === "smart") {
+    try {
+      await analyzeSmartBatch(batchFiles);
+      smartBatchSummary = buildSmartBatchSummary(batchFiles, batchStartedAt);
+    } catch (error) {
+      console.warn("Smart quality analysis failed", error);
+      smartBatchSummary = buildSmartBatchSummary(batchFiles, batchStartedAt);
+    }
+  }
+
   statusEl.textContent = anyCancelled
     ? "Cancelled"
     : anyOversize
@@ -2257,6 +2662,13 @@ startBtn.addEventListener("click", async () => {
   try {
     setGlobalProcessingLock(false);
   } catch (e) {}
+  if (
+    batchMode === "smart" &&
+    smartBatchSummary &&
+    smartBatchSummary.successful > 0
+  ) {
+    showSmartResults(smartBatchSummary);
+  }
   // open output and highlight first file (skip if user cancelled)
   // removed automatic opening of file explorer per user request
   // user can now click the thumbnail to open the original file (before compress)
@@ -2461,10 +2873,17 @@ async function smartCompressVideo(p, onProgress, opts) {
   const crf = require("./media-utils").getSmartQualitySettings(
     opts.quality
   ).videoCrf;
+  const audioCopied = !!(
+    opts.preserveAudio && audio && audio.codec_name === "aac"
+  );
+  const sourceAudioBitrate = audio && audio.bit_rate
+    ? Math.round(Number(audio.bit_rate) / 1000)
+    : null;
   fileStates[p].sourceDetails = {
     ...(fileStates[p].sourceDetails || {}), kind: "Video", duration,
     width: video && video.width, height: video && video.height, fps: sourceFps,
     videoCodec: video && video.codec_name, audioCodec: audio && audio.codec_name,
+    audioBitrateKbps: sourceAudioBitrate,
   };
   fileStates[p].sourceDetailsLoaded = true;
   fileStates[p].outPath = outPath;
@@ -2474,6 +2893,16 @@ async function smartCompressVideo(p, onProgress, opts) {
     videoBitrateKbps: `CRF ${crf}`,
     audioBitrateKbps: opts.preserveAudio ? 192 : 128,
   };
+  fileStates[p].resultDetails = {
+    ...(fileStates[p].resultDetails || {}),
+    audioResult: audio
+      ? {
+          handling: audioCopied ? "Copied" : "Re-encoded",
+          codec: audioCopied ? String(audio.codec_name).toUpperCase() : "AAC",
+          bitrateKbps: audioCopied ? sourceAudioBitrate : (opts.preserveAudio ? 192 : 128),
+        }
+      : { handling: "No audio track" },
+  };
   return new Promise((resolve, reject) => {
     let command = ffmpeg(p);
     fileStates[p].cmd = command;
@@ -2482,9 +2911,9 @@ async function smartCompressVideo(p, onProgress, opts) {
     const outputOptions = [
       "-c:v libx264", `-crf ${crf}`, "-preset slow", "-pix_fmt yuv420p",
       "-movflags +faststart",
-      opts.preserveAudio && audio && audio.codec_name === "aac" ? "-c:a copy" : "-c:a aac",
+      audioCopied ? "-c:a copy" : "-c:a aac",
     ];
-    if (!(opts.preserveAudio && audio && audio.codec_name === "aac"))
+    if (!audioCopied)
       outputOptions.push(`-b:a ${opts.preserveAudio ? 192 : 128}k`);
     if (opts.stripMetadata) outputOptions.push("-map_metadata -1");
     if (!opts.retainFps && sourceFps) outputOptions.push(`-r ${Math.min(30, Math.round(sourceFps))}`);
@@ -2551,6 +2980,14 @@ async function smartCompressAudio(p, onProgress, opts) {
   fileStates[p].processingDetails = {
     ...(fileStates[p].processingDetails || {}), stage: "High-quality audio encoding",
     outputFormat: "MP3", audioBitrateKbps: bitrate,
+  };
+  fileStates[p].resultDetails = {
+    ...(fileStates[p].resultDetails || {}),
+    audioResult: {
+      handling: "Re-encoded",
+      codec: "MP3",
+      bitrateKbps: bitrate,
+    },
   };
   return new Promise((resolve, reject) => {
     const command = ffmpeg(p).noVideo().audioCodec("libmp3lame").audioBitrate(`${bitrate}k`).format("mp3");

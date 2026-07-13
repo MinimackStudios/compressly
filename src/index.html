@@ -493,6 +493,73 @@
         </div>
       </div>
 
+      <section id="smartResultsView" class="smart-results-view" aria-hidden="true">
+        <div class="smart-results-shell">
+          <header class="smart-results-header">
+            <button id="smartResultsBack" class="btn smart-results-back" type="button">← Back to files</button>
+            <div class="smart-results-heading">
+              <div class="smart-results-eyebrow">✦ Smart Compression complete</div>
+              <h2>Your media is ready</h2>
+              <p id="smartResultsSubtitle">Compression finished successfully.</p>
+            </div>
+            <div id="smartResultsStatus" class="smart-results-status">Complete</div>
+          </header>
+
+          <section class="smart-results-overview" aria-label="Batch summary">
+            <div class="smart-size-summary">
+              <div class="smart-summary-title">
+                <span>Space recovered</span>
+                <strong id="smartResultsReduction">—</strong>
+              </div>
+              <div class="smart-size-bars">
+                <div>
+                  <span>Before</span>
+                  <i class="before"></i>
+                  <strong id="smartResultsBefore">—</strong>
+                </div>
+                <div>
+                  <span>After</span>
+                  <i id="smartResultsAfterBar" class="after"></i>
+                  <strong id="smartResultsAfter">—</strong>
+                </div>
+              </div>
+              <p id="smartResultsSaved">— saved</p>
+            </div>
+
+            <div class="smart-quality-summary">
+              <div id="smartQualityRing" class="smart-quality-ring">
+                <div><strong id="smartResultsSimilarity">—</strong><span>similarity</span></div>
+              </div>
+              <div>
+                <span class="smart-quality-label">Sampled SSIM</span>
+                <h3>Visual fidelity</h3>
+                <p id="smartResultsDifference">No visual comparison available.</p>
+              </div>
+            </div>
+
+            <dl class="smart-results-facts">
+              <div><dt>Processed</dt><dd id="smartResultsProcessed">—</dd></div>
+              <div><dt>Elapsed</dt><dd id="smartResultsElapsed">—</dd></div>
+              <div><dt>Failed</dt><dd id="smartResultsFailed">0</dd></div>
+              <div><dt>Cancelled</dt><dd id="smartResultsCancelled">0</dd></div>
+            </dl>
+          </section>
+
+          <section class="smart-results-files">
+            <div class="smart-results-files-heading">
+              <h3>File results</h3>
+              <span>Visual scores compare decoded source and output samples.</span>
+            </div>
+            <div id="smartResultsList" class="smart-results-list"></div>
+          </section>
+
+          <footer class="smart-results-footer">
+            <button id="smartResultsReveal" class="btn" type="button">Reveal first output</button>
+            <button id="smartResultsMore" class="btn primary" type="button">Compress more</button>
+          </footer>
+        </div>
+      </section>
+
       <section id="detailView" class="detail-view" aria-hidden="true">
         <div class="detail-shell">
           <header class="detail-header">

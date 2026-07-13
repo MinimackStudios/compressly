@@ -101,6 +101,66 @@ function getMediaDetailCapabilities(kind) {
   };
 }
 
+function parseSsimOutput(output) {
+  const matches = [...String(output || "").matchAll(/All:([0-9]*\.?[0-9]+)/g)];
+  if (!matches.length) return null;
+  const value = Number(matches[matches.length - 1][1]);
+  return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : null;
+}
+
+function getSsimSampleTimestamps(durationSeconds) {
+  const duration = Number(durationSeconds);
+  if (!Number.isFinite(duration) || duration <= 0) return [];
+  const positions = duration <= 3
+    ? [0.25, 0.5, 0.75]
+    : [0.1, 0.3, 0.5, 0.7, 0.9];
+  return positions.map((position) =>
+    Math.round(duration * position * 1000) / 1000
+  );
+}
+
+function summarizeSmartBatch(entries, elapsedSeconds = 0) {
+  const list = Array.isArray(entries) ? entries : [];
+  const successful = list.filter((entry) =>
+    entry && (entry.status === "done" || entry.status === "done-oversize")
+  );
+  const failed = list.filter((entry) => entry && entry.status === "error").length;
+  const cancelled = list.filter((entry) => entry && entry.status === "cancelled").length;
+  const originalBytes = successful.reduce(
+    (sum, entry) => sum + Math.max(0, Number(entry.originalBytes) || 0),
+    0
+  );
+  const outputBytes = successful.reduce(
+    (sum, entry) => sum + Math.max(0, Number(entry.outputBytes) || 0),
+    0
+  );
+  const similarities = successful
+    .map((entry) => entry.similarity)
+    .filter((value) => value !== null && value !== undefined && value !== "")
+    .map(Number)
+    .filter((value) => Number.isFinite(value));
+  const visualSimilarity = similarities.length
+    ? similarities.reduce((sum, value) => sum + value, 0) / similarities.length
+    : null;
+
+  return {
+    total: list.length,
+    successful: successful.length,
+    failed,
+    cancelled,
+    originalBytes,
+    outputBytes,
+    bytesSaved: originalBytes - outputBytes,
+    reductionPercent: originalBytes > 0
+      ? (1 - outputBytes / originalBytes) * 100
+      : null,
+    visualSimilarity,
+    visualDifference: visualSimilarity === null ? null : 100 - visualSimilarity,
+    measuredVisualFiles: similarities.length,
+    elapsedSeconds: Math.max(0, Number(elapsedSeconds) || 0),
+  };
+}
+
 module.exports = {
   getImageOutputExtension,
   buildAvailableOutputPath,
@@ -115,4 +175,7 @@ module.exports = {
   selectPreset,
   getSmartQualitySettings,
   getMediaDetailCapabilities,
+  parseSsimOutput,
+  getSsimSampleTimestamps,
+  summarizeSmartBatch,
 };
