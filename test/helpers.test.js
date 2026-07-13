@@ -1,5 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
 
 const {
   getImageOutputExtension,
@@ -20,6 +21,15 @@ const {
   summarizeSmartBatch,
 } = require("../src/media-utils");
 const { selectReleaseAsset, verifyAssetDigest } = require("../src/update-utils");
+const {
+  TOUR_STORAGE_KEY,
+  TOUR_STEP_IDS,
+  clampTourIndex,
+  getTourStepId,
+  hasSeenTour,
+  markTourSeen,
+  createTourSnapshot,
+} = require("../src/tour-utils");
 
 test("BMP and TIFF inputs are deliberately converted to JPEG", () => {
   assert.equal(getImageOutputExtension("photo.bmp"), ".jpg");
@@ -148,4 +158,57 @@ test("Smart batch summaries use successful outputs and measured visual files", (
     { status: "done", originalBytes: 0, outputBytes: 0, similarity: null },
   ]);
   assert.equal(empty.reductionPercent, null);
+});
+
+test("the Version 2.0 tour has bounded ordered navigation", () => {
+  assert.equal(TOUR_STEP_IDS.length, 7);
+  assert.deepEqual(TOUR_STEP_IDS, [
+    "welcome",
+    "standard-controls",
+    "details",
+    "smart-workspace",
+    "smart-preferences",
+    "smart-processing",
+    "results",
+  ]);
+  assert.equal(clampTourIndex(-4), 0);
+  assert.equal(clampTourIndex(99), 6);
+  assert.equal(getTourStepId(3), "smart-workspace");
+});
+
+test("tour persistence and restoration snapshots fail safely", () => {
+  const values = new Map();
+  const storage = {
+    getItem: (key) => values.get(key) || null,
+    setItem: (key, value) => values.set(key, value),
+  };
+  assert.equal(hasSeenTour(storage), false);
+  assert.equal(markTourSeen(storage), true);
+  assert.equal(values.get(TOUR_STORAGE_KEY), "1");
+  assert.equal(hasSeenTour(storage), true);
+  assert.deepEqual(createTourSnapshot({
+    mode: "smart",
+    statusText: "Ready",
+    scrollTop: 42,
+    resultsVisible: true,
+    detailVisible: false,
+    focusedId: "aboutBtn",
+  }), {
+    mode: "smart",
+    statusText: "Ready",
+    scrollTop: 42,
+    resultsVisible: true,
+    detailVisible: false,
+    focusedId: "aboutBtn",
+  });
+  assert.equal(hasSeenTour({ getItem: () => { throw new Error("blocked"); } }), false);
+});
+
+test("user-controlled filenames are rendered as text, not HTML", () => {
+  const rendererSource = fs.readFileSync(
+    require.resolve("../src/renderer.js"),
+    "utf8"
+  );
+  assert.match(rendererSource, /item\.textContent = `\$\{filename\}/);
+  assert.doesNotMatch(rendererSource, /listEl\.innerHTML\s*=/);
 });

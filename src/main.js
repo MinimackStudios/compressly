@@ -4,12 +4,17 @@ const {
   ipcMain,
   dialog,
   nativeTheme,
+  session,
 } = require("electron");
-const { Menu } = require("electron");
+const { Menu, shell } = require("electron");
 const path = require("path");
 const Store = require("electron-store");
 const store = new Store();
 const fs = require("fs");
+
+function isCompresslyThumbnail(name) {
+  return /^(?:compressly_thumb_.+|thumb_[a-z0-9]{7}|thumb_\d+(?:\.\d+)?_\d+_.+)\.png$/i.test(name);
+}
 
 // Global error handlers to surface startup/runtime errors
 process.on("uncaughtException", (err) => {
@@ -70,6 +75,15 @@ function createWindow() {
   });
 
   win.loadFile(path.join(__dirname, "index.html"));
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+    return { action: "deny" };
+  });
+  win.webContents.on("will-navigate", (event, url) => {
+    if (url === win.webContents.getURL()) return;
+    event.preventDefault();
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+  });
   win.once("ready-to-show", () => {
     win.show();
     // Inform renderer about user's lite preference so UI can be adjusted early
@@ -176,6 +190,45 @@ app.whenReady().then(() => {
 
 app.on("window-all-closed", function () {
   if (process.platform !== "darwin") app.quit();
+});
+
+ipcMain.handle("reset-app-data", async () => {
+  let thumbnailsRemoved = 0;
+  const errors = [];
+  try {
+    const tempDirectory = app.getPath("temp");
+    for (const name of fs.readdirSync(tempDirectory)) {
+      if (!isCompresslyThumbnail(name)) continue;
+      try {
+        fs.unlinkSync(path.join(tempDirectory, name));
+        thumbnailsRemoved += 1;
+      } catch (error) {
+        errors.push(`Could not remove ${name}: ${error.message}`);
+      }
+    }
+  } catch (error) {
+    errors.push(`Could not scan thumbnail cache: ${error.message}`);
+  }
+  try {
+    store.clear();
+  } catch (error) {
+    errors.push(`Could not clear saved preferences: ${error.message}`);
+  }
+  try {
+    await session.defaultSession.clearCache();
+    await session.defaultSession.clearStorageData();
+  } catch (error) {
+    errors.push(`Could not clear Electron storage: ${error.message}`);
+  }
+  try {
+    nativeTheme.themeSource = "light";
+  } catch (error) {}
+
+  setTimeout(() => {
+    app.relaunch();
+    app.exit(0);
+  }, 300);
+  return { ok: errors.length === 0, thumbnailsRemoved, errors };
 });
 
 // Allow renderer to request the app change its appearance (dark/light/system).

@@ -128,39 +128,41 @@
         <section class="controls">
           <button id="pick" class="btn primary">Select Files</button>
           <div id="standardOptions" class="options mode-options active">
-            <div class="control-field target-size-field">
-              <span class="control-label">Target size</span>
-              <div id="targetSizeControl" class="setting-selector-row">
-                <select id="targetSizePreset" class="priority-select setting-preset-select">
-                  <option value="1">1 MB</option>
-                  <option value="5">5 MB</option>
-                  <option value="10" selected>10 MB</option>
-                  <option value="25">25 MB</option>
-                  <option value="50">50 MB</option>
-                  <option value="100">100 MB</option>
-                  <option value="custom">Custom</option>
-                </select>
-                <button id="targetCustomClose" class="custom-close-btn" type="button" aria-label="Close custom target size">×</button>
-                <input id="targetSize" class="target-input custom-setting-input" type="number" min="0.01" step="0.01" value="10" aria-label="Custom target size in MB" />
+            <div id="standardPresetControls" class="standard-preset-controls">
+              <div class="control-field target-size-field">
+                <span class="control-label">Target size</span>
+                <div id="targetSizeControl" class="setting-selector-row">
+                  <select id="targetSizePreset" class="priority-select setting-preset-select">
+                    <option value="1">1 MB</option>
+                    <option value="5">5 MB</option>
+                    <option value="10" selected>10 MB</option>
+                    <option value="25">25 MB</option>
+                    <option value="50">50 MB</option>
+                    <option value="100">100 MB</option>
+                    <option value="custom">Custom</option>
+                  </select>
+                  <button id="targetCustomClose" class="custom-close-btn" type="button" aria-label="Close custom target size">×</button>
+                  <input id="targetSize" class="target-input custom-setting-input" type="number" min="0.01" step="0.01" value="10" aria-label="Custom target size in MB" />
+                </div>
               </div>
-            </div>
 
-            <label class="control-field">
-              <span class="control-label">FPS</span>
-              <div id="videoFpsControl" class="setting-selector-row">
-                <select id="videoFpsPreset" class="priority-select setting-preset-select">
-                  <option value="24">24</option>
-                  <option value="25">25</option>
-                  <option value="30" selected>30</option>
-                  <option value="50">50</option>
-                  <option value="60">60</option>
-                  <option value="120">120</option>
-                  <option value="custom">Custom</option>
-                </select>
-                <button id="fpsCustomClose" class="custom-close-btn" type="button" aria-label="Close custom FPS">×</button>
-                <input id="videoFps" class="fps-input custom-setting-input" type="number" min="1" max="120" step="1" value="30" aria-label="Custom frames per second" />
-              </div>
-            </label>
+              <label class="control-field">
+                <span class="control-label">FPS</span>
+                <div id="videoFpsControl" class="setting-selector-row">
+                  <select id="videoFpsPreset" class="priority-select setting-preset-select">
+                    <option value="24">24</option>
+                    <option value="25">25</option>
+                    <option value="30" selected>30</option>
+                    <option value="50">50</option>
+                    <option value="60">60</option>
+                    <option value="120">120</option>
+                    <option value="custom">Custom</option>
+                  </select>
+                  <button id="fpsCustomClose" class="custom-close-btn" type="button" aria-label="Close custom FPS">×</button>
+                  <input id="videoFps" class="fps-input custom-setting-input" type="number" min="1" max="120" step="1" value="30" aria-label="Custom frames per second" />
+                </div>
+              </label>
+            </div>
 
             <label class="select-label">
               <span class="resolution-label">Target resolution</span>
@@ -235,6 +237,35 @@
         <!-- recentOutputs removed -->
       </main>
 
+      <section
+        id="tourOverlay"
+        class="tour-overlay"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="tourTitle"
+        aria-describedby="tourBody"
+        aria-hidden="true"
+      >
+        <div id="tourSpotlight" class="tour-spotlight" aria-hidden="true"></div>
+        <div id="tourPopover" class="tour-popover" tabindex="-1">
+          <div class="tour-popover-topline">
+            <span id="tourStepLabel">Welcome to 2.0</span>
+            <button id="tourSkip" class="tour-skip" type="button">Skip tour</button>
+          </div>
+          <h2 id="tourTitle">Welcome to Compressly 2.0</h2>
+          <p id="tourBody"></p>
+          <div id="tourExample" class="tour-example" hidden></div>
+          <div class="tour-progress-row">
+            <div id="tourDots" class="tour-dots" aria-label="Tour progress"></div>
+            <span id="tourProgressText">1 of 7</span>
+          </div>
+          <div class="tour-actions">
+            <button id="tourBack" class="btn" type="button">Back</button>
+            <button id="tourNext" class="btn primary" type="button">Next</button>
+          </div>
+        </div>
+      </section>
+
       <!-- About modal -->
       <div id="aboutModal" class="modal-overlay">
         <div class="about-modal">
@@ -285,6 +316,18 @@
               </svg>
               View on GitHub
             </button>
+            <button id="tourReplayBtn" type="button" class="btn" style="margin-left: 8px">
+              Replay Version 2.0 tour
+            </button>
+            <div class="about-data-reset">
+              <div>
+                <strong>Reset Compressly data</strong>
+                <span>Clear thumbnails, cached app data, settings, and tour history.</span>
+              </div>
+              <button id="resetAppDataBtn" type="button" class="btn danger-subtle">
+                Reset data
+              </button>
+            </div>
             <label
               id="titlebarToggleWrap"
               style="

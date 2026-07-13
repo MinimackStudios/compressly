@@ -28,6 +28,12 @@ const smartStripMetadataEl = document.getElementById("smartStripMetadata");
 const smartResultsViewEl = document.getElementById("smartResultsView");
 const smartResultsListEl = document.getElementById("smartResultsList");
 let compressionMode = "standard";
+let tourActive = false;
+let tourSession = null;
+let tourStepIndex = 0;
+let updateStartupCheckSettled = false;
+let mediaStartupCheckSettled = false;
+let tourSeenThisSession = false;
 
 // Window control buttons for custom titlebar (only present in frameless mode)
 const winMinBtn = document.getElementById("win-min");
@@ -566,6 +572,13 @@ const {
   getSsimSampleTimestamps,
   summarizeSmartBatch,
 } = require("./media-utils");
+const {
+  TOUR_STEP_IDS,
+  clampTourIndex,
+  hasSeenTour,
+  markTourSeen,
+  createTourSnapshot,
+} = require("./tour-utils");
 
 function persistSetting(key, value) {
   try {
@@ -620,7 +633,7 @@ function setCompressionMode(mode, animate = true) {
   document.body.classList.toggle("smart-mode", smart);
   standardOptionsEl.classList.toggle("active", !smart);
   smartOptionsEl.classList.toggle("active", smart);
-  if (leavingSmartMode) removeSmartBatchFilesFromRegularQueue();
+  if (leavingSmartMode && !tourActive) removeSmartBatchFilesFromRegularQueue();
   const incoming = smart ? smartOptionsEl : standardOptionsEl;
   if (allowMotion && smart) {
     incoming.classList.add("entering");
@@ -635,7 +648,8 @@ function setCompressionMode(mode, animate = true) {
       : 'Drag & drop files here, or click "Select Files"';
   startBtn.textContent = smart ? "Smart Compress" : "Compress!";
   pickBtn.textContent = smart ? "Add Media" : "Select Files";
-  persistSetting(SETTINGS_KEYS.compressionMode, compressionMode);
+  if (!tourActive)
+    persistSetting(SETTINGS_KEYS.compressionMode, compressionMode);
 }
 
 function applyTargetSizeControl(value, persist = false) {
@@ -797,10 +811,18 @@ try {
       // Always attempt to fetch the latest release from GitHub on startup so
       // we don't rely on stale cached values. If the network call fails we
       // will gracefully fall back to any cached tag/url already stored.
+      const updateCheckController = new AbortController();
+      const updateCheckTimeout = setTimeout(
+        () => updateCheckController.abort(),
+        8000
+      );
       try {
         const res = await fetch(
           "https://api.github.com/repos/MinimackStudios/compressly/releases/latest",
-          { headers: { Accept: "application/vnd.github.v3+json" } }
+          {
+            headers: { Accept: "application/vnd.github.v3+json" },
+            signal: updateCheckController.signal,
+          }
         );
         if (res.ok) {
           const data = await res.json();
@@ -817,6 +839,8 @@ try {
         }
       } catch (e) {
         // network failure — keep using cached latestTag/latestUrl if present
+      } finally {
+        clearTimeout(updateCheckTimeout);
       }
 
       if (!latestTag) return; // nothing to compare
@@ -1007,17 +1031,41 @@ try {
     } catch (e) {
       console.warn("update check failed", e);
     }
-  })();
-} catch (e) {}
+  })().finally(() => {
+    updateStartupCheckSettled = true;
+    maybeLaunchAutomaticTour();
+  });
+} catch (e) {
+  updateStartupCheckSettled = true;
+}
 
 // (Removed fallback that opened the releases page - Download now only attempts the installer download)
+
+function renderLongVideoList(listElement, videos) {
+  if (!listElement) return;
+  const fragment = document.createDocumentFragment();
+  videos.forEach((video) => {
+    const item = document.createElement("div");
+    item.className = "long-video-item";
+    const filename = require("path").basename(video.path);
+    const minutes = Math.floor(video.duration / 60);
+    const seconds = Math.round(video.duration % 60);
+    item.textContent = `${filename} · ${minutes}m ${seconds}s`;
+    fragment.appendChild(item);
+  });
+  listElement.replaceChildren(fragment);
+}
 
 // Prune cache files older than 7 days (run async, don't block UI)
 setTimeout(() => {
   try {
+    const fs = require("fs");
+    const path = require("path");
+    const cacheRoot = require("os").tmpdir();
     const filesInCache = fs.readdirSync(cacheRoot);
     const now = Date.now();
     for (const f of filesInCache) {
+      if (!/^(?:compressly_thumb_.+|thumb_[a-z0-9]{7}|thumb_\d+(?:\.\d+)?_\d+_.+)\.png$/i.test(f)) continue;
       try {
         const st = fs.statSync(path.join(cacheRoot, f));
         if (now - st.mtimeMs > 7 * 24 * 60 * 60 * 1000) {
@@ -1355,25 +1403,14 @@ pickBtn.addEventListener("click", async () => {
       }
       if (longVideos.length) {
         const listEl = document.getElementById("longVideoList");
-        if (listEl) {
-          listEl.innerHTML = longVideos
-            .map(
-              (v) =>
-                `<div style="padding:6px 0;border-bottom:1px solid var(--muted);">${require("path").basename(
-                  v.path
-                )} — ${Math.floor(v.duration / 60)}m ${Math.round(
-                  v.duration % 60
-                )}s</div>`
-            )
-            .join("");
-        }
+        renderLongVideoList(listEl, longVideos);
         const modal = document.getElementById("longVideoModal");
         if (modal) modal.classList.add("visible");
       }
     } catch (e) {}
   } catch (err) {
     console.error("select files failed", err);
-    statusEl.textContent = "Error opening file picker — see console";
+    statusEl.textContent = "Error opening file picker. See console.";
     if (window.electronAPI && window.electronAPI.log)
       window.electronAPI.log("select-files error", err.message);
   }
@@ -1437,7 +1474,7 @@ if (dropArea) {
       if (ignoredNames.length) {
         const shown = ignoredNames.slice(0, 6).join(", ");
         msg +=
-          ` — ignored unsupported: ${shown}` +
+          `. Ignored unsupported: ${shown}` +
           (ignoredNames.length > 6 ? `, +${ignoredNames.length - 6} more` : "");
       }
       if (skipped.length) msg += `, skipped ${skipped.length} duplicate(s)`;
@@ -1462,18 +1499,7 @@ if (dropArea) {
         }
         if (actuallyLong.length) {
           const listEl = document.getElementById("longVideoList");
-          if (listEl) {
-            listEl.innerHTML = actuallyLong
-              .map(
-                (v) =>
-                  `<div style="padding:6px 0;border-bottom:1px solid var(--muted);">${require("path").basename(
-                    v.path
-                  )} — ${Math.floor(v.duration / 60)}m ${Math.round(
-                    v.duration % 60
-                  )}s</div>`
-              )
-              .join("");
-          }
+          renderLongVideoList(listEl, actuallyLong);
           const modal = document.getElementById("longVideoModal");
           if (modal) modal.classList.add("visible");
         }
@@ -1525,6 +1551,32 @@ if (dropArea) {
 
     if (aboutBtn) {
       aboutBtn.addEventListener("click", () => showAboutModal());
+    }
+
+    const resetAppDataBtn = document.getElementById("resetAppDataBtn");
+    if (resetAppDataBtn) {
+      resetAppDataBtn.addEventListener("click", async () => {
+        if (document.body.classList.contains("processing")) {
+          alert("Finish or cancel the active compression before resetting app data.");
+          return;
+        }
+        const confirmed = window.confirm(
+          "Reset Compressly's thumbnails, cache, settings, and tour history?\n\nYour source files and compressed outputs will not be deleted. Compressly will restart."
+        );
+        if (!confirmed) return;
+        resetAppDataBtn.disabled = true;
+        resetAppDataBtn.textContent = "Resetting…";
+        try {
+          const result = await require("electron").ipcRenderer.invoke("reset-app-data");
+          if (result && result.errors && result.errors.length)
+            console.warn("Compressly reset completed with warnings", result.errors);
+        } catch (error) {
+          console.error("Could not reset Compressly data", error);
+          alert("Compressly could not reset its data. See the console for details.");
+          resetAppDataBtn.disabled = false;
+          resetAppDataBtn.textContent = "Reset data";
+        }
+      });
     }
 
     // Close handlers: button, clicking overlay background, and ESC key
@@ -1627,6 +1679,12 @@ function updateFooterInfo() {
 const detailViewEl = document.getElementById("detailView");
 let detailedFilePath = null;
 let detailRefreshTimer = null;
+let detailBackgroundScroll = null;
+
+function setFullWindowViewState(className, open) {
+  document.documentElement.classList.toggle(className, open);
+  document.body.classList.toggle(className, open);
+}
 
 function mediaKindForPath(filePath) {
   const ext = require("path").extname(filePath).toLowerCase();
@@ -1856,10 +1914,18 @@ function updateDetailedView() {
 }
 
 function openDetailedView(filePath) {
+  if (!detailViewEl.classList.contains("visible")) {
+    const scrollHost = document.body.classList.contains("has-custom-titlebar")
+      ? document.querySelector(".app")
+      : document.scrollingElement;
+    detailBackgroundScroll = scrollHost
+      ? { host: scrollHost, top: scrollHost.scrollTop }
+      : null;
+  }
   detailedFilePath = filePath;
   detailViewEl.classList.add("visible");
   detailViewEl.setAttribute("aria-hidden", "false");
-  document.body.classList.add("detail-open");
+  setFullWindowViewState("detail-open", true);
   updateDetailedView();
   loadSourceDetails(filePath);
   clearInterval(detailRefreshTimer);
@@ -1869,10 +1935,15 @@ function openDetailedView(filePath) {
 function closeDetailedView() {
   detailViewEl.classList.remove("visible");
   detailViewEl.setAttribute("aria-hidden", "true");
-  document.body.classList.remove("detail-open");
+  setFullWindowViewState("detail-open", false);
   detailedFilePath = null;
   clearInterval(detailRefreshTimer);
   detailRefreshTimer = null;
+  if (detailBackgroundScroll) {
+    const { host, top } = detailBackgroundScroll;
+    detailBackgroundScroll = null;
+    requestAnimationFrame(() => { host.scrollTop = top; });
+  }
 }
 
 document.getElementById("detailBack").addEventListener("click", closeDetailedView);
@@ -1898,7 +1969,7 @@ window.addEventListener("keydown", (event) => {
 function closeSmartResultsView() {
   smartResultsViewEl.classList.remove("visible");
   smartResultsViewEl.setAttribute("aria-hidden", "true");
-  document.body.classList.remove("smart-results-open");
+  setFullWindowViewState("smart-results-open", false);
 }
 
 function removeSmartBatchFilesFromRegularQueue() {
@@ -2112,7 +2183,7 @@ function showSmartResults(summary) {
   document.getElementById("smartResultsReveal").disabled = !summary.firstOutput;
   smartResultsViewEl.classList.add("visible");
   smartResultsViewEl.setAttribute("aria-hidden", "false");
-  document.body.classList.add("smart-results-open");
+  setFullWindowViewState("smart-results-open", true);
 }
 
 document.getElementById("smartResultsBack").addEventListener("click", closeSmartResultsView);
@@ -2129,6 +2200,503 @@ document.getElementById("smartResultsMore").addEventListener("click", () => {
   statusEl.textContent = "Ready for more media";
   renderList();
   updateFooterInfo();
+});
+
+const TOUR_STEPS = [
+  {
+    id: "welcome",
+    page: "welcome",
+    target: null,
+    placement: "center",
+    label: "Welcome to 2.0",
+    title: "Welcome to Compressly 2.0",
+    body: "This release adds flexible compression controls, a complete Smart Compression workspace, richer per-file details, and a new results dashboard.",
+    example: "Nothing in this tour touches your files. Every media item and result you see is a safe example.",
+  },
+  {
+    id: "standard-controls",
+    page: "standard",
+    target: "#standardPresetControls",
+    placement: "bottom",
+    label: "Flexible controls",
+    title: "Size and FPS presets",
+    body: "Start quickly with common target-size and frame-rate presets. The menus keep useful choices close at hand, while Custom remains available when a file needs a more specific value.",
+    example: "Choose the 25 MB size preset and the 60 FPS preset, or select Custom to enter an exact value.",
+    presetDemo: true,
+  },
+  {
+    id: "details",
+    page: "details",
+    target: "#detailView",
+    placement: "bottom-right",
+    spotlightPadding: 0,
+    label: "Detailed View",
+    title: "Understand every file",
+    body: "Detailed View follows a file before, during, and after compression with source metadata, settings, live progress, attempts, and final results.",
+    example: "epik-clip.mp4 · 1080p · 60 FPS · H.264/AAC · 72% through a quality-aware encode.",
+  },
+  {
+    id: "smart-workspace",
+    page: "smart",
+    target: ".smart-hero-copy",
+    placement: "bottom",
+    spotlightPadding: { top: 22, right: 22, bottom: 8, left: 22 },
+    label: "Smart Compression",
+    title: "A workspace built around fidelity",
+    body: "Smart Compression chooses efficient settings for each media type while keeping the workflow focused and easy to understand.",
+    example: "Use Smart mode when you want a meaningfully smaller file without choosing an exact maximum size.",
+  },
+  {
+    id: "smart-preferences",
+    page: "smart",
+    target: "#smartOptions",
+    placement: "bottom",
+    label: "Compression preferences",
+    title: "Protect what matters",
+    body: "Choose a quality profile, then decide whether resolution, frame rate, and audio should remain untouched. Metadata can be removed independently.",
+    example: "Maximum fidelity + Retain resolution + Retain FPS shrinks the video while keeping its picture and motion very close to the original.",
+  },
+  {
+    id: "smart-processing",
+    page: "processing",
+    target: "#dropArea",
+    placement: "top",
+    spotlightPadding: { top: 10, right: 10, bottom: 20, left: 10 },
+    label: "Smart processing",
+    title: "Encoding, then an honest comparison",
+    body: "Smart mode first creates the optimized output. It then compares decoded source and output samples with SSIM instead of inventing a quality percentage from an encoder preset.",
+    example: "The animated example is for presentation only. FFmpeg is not started and no output file is created.",
+  },
+  {
+    id: "results",
+    page: "results",
+    target: ".smart-results-overview",
+    placement: "bottom",
+    spotlightPadding: { top: 8, right: 8, bottom: 3, left: 22 },
+    label: "Completion dashboard",
+    title: "See what changed at a glance",
+    body: "The results dashboard combines processed volume, actual space saved, elapsed time, sampled visual similarity, and clear per-file outcomes.",
+    example: "148.2 MB → 42.6 MB · 71.3% smaller · 97.8% visual similarity · 2.2% measured difference.",
+  },
+];
+
+const tourOverlayEl = document.getElementById("tourOverlay");
+const tourSpotlightEl = document.getElementById("tourSpotlight");
+const tourPopoverEl = document.getElementById("tourPopover");
+let tourLaunchTimer = null;
+
+function getTourScrollHost() {
+  return document.body.classList.contains("has-custom-titlebar")
+    ? document.querySelector(".app")
+    : document.scrollingElement;
+}
+
+function hideTourDetailExample() {
+  if (detailedFilePath) return;
+  detailViewEl.classList.remove("visible");
+  detailViewEl.setAttribute("aria-hidden", "true");
+  setFullWindowViewState("detail-open", false);
+}
+
+function showTourDetailExample() {
+  document.getElementById("detailName").textContent = "epik-clip.mp4";
+  document.getElementById("detailPath").textContent = "Example media · no file is opened";
+  document.getElementById("detailStatus").textContent = "Example";
+  document.getElementById("detailProgressPct").textContent = "72%";
+  document.getElementById("detailProgressBar").style.width = "72%";
+  document.getElementById("detailProgressLabel").textContent = "Quality-aware encoding";
+  document.getElementById("detailElapsed").textContent = "0:18";
+  document.getElementById("detailCurrentSize").textContent = "31.4 MB";
+  document.getElementById("detailAttempt").textContent = "Pass 1";
+  setDetailRows("detailSource", [
+    ["Type", "Video"], ["Original size", "148.2 MB"], ["Duration", "1:24"],
+    ["Dimensions", "1920 × 1080"], ["Source FPS", "60"],
+    ["Video codec", "H.264"], ["Audio codec", "AAC"],
+  ]);
+  setDetailRows("detailSettings", [
+    ["Mode", "Smart Compression"], ["Quality", "Maximum fidelity"],
+    ["FPS", "Retain source"], ["Resolution", "Retain source"],
+    ["Audio", "Preserve quality"], ["Metadata", "Remove"],
+  ]);
+  setDetailRows("detailResult", [
+    ["Output size", "Calculating"], ["Visual similarity", "Pending sampled SSIM"],
+    ["Output path", "Example only"],
+  ]);
+  document.getElementById("detailCancel").style.display = "none";
+  document.getElementById("detailReveal").style.display = "none";
+  detailViewEl.classList.add("visible");
+  detailViewEl.setAttribute("aria-hidden", "false");
+  setFullWindowViewState("detail-open", true);
+}
+
+function renderTourProcessingExample() {
+  const row = document.createElement("li");
+  row.className = "tour-demo-row";
+  const file = document.createElement("div");
+  file.className = "tour-demo-file";
+  const thumb = document.createElement("div");
+  thumb.className = "tour-demo-thumb";
+  thumb.textContent = "▶";
+  const copy = document.createElement("div");
+  const name = document.createElement("strong");
+  name.textContent = "epik-clip.mp4";
+  const note = document.createElement("span");
+  note.textContent = "Example · Quality-aware encoding";
+  copy.append(name, note);
+  file.append(thumb, copy);
+  const progress = document.createElement("div");
+  progress.className = "tour-demo-progress";
+  const progressText = document.createElement("span");
+  progressText.textContent = "Analyzing motion and detail";
+  const track = document.createElement("div");
+  track.className = "tour-demo-progress-track";
+  track.appendChild(document.createElement("i"));
+  progress.append(progressText, track);
+  row.append(file, progress);
+  fileListEl.replaceChildren(row);
+  document.body.classList.add("smart-has-files");
+  statusEl.textContent = "Example Smart compression in progress…";
+}
+
+function createTourDashboardRow() {
+  const row = document.createElement("div");
+  row.className = "smart-result-row";
+  row.innerHTML = `
+    <div class="smart-result-file">
+      <div class="smart-result-thumb">▶</div>
+      <div><strong>epik-clip.mp4</strong><span>Video · Example result</span></div>
+    </div>
+    <div class="smart-result-size">
+      <strong>148.2 MB → 42.6 MB</strong><span>71.3% smaller</span>
+      <div class="smart-result-saving-track"><i style="width:71.3%"></i></div>
+    </div>
+    <div class="smart-result-quality">
+      <strong>97.8% visual similarity</strong><span>2.2% measured difference · 5 samples</span>
+    </div>
+    <div class="smart-result-actions">
+      <button class="btn" type="button" disabled title="Example only">Details</button>
+      <button class="btn" type="button" disabled title="Example only">Reveal</button>
+    </div>`;
+  return row;
+}
+
+function createTourPresetMenu(values, selectedValue) {
+  const menu = document.createElement("div");
+  menu.className = "tour-preset-menu";
+  menu.setAttribute("aria-hidden", "true");
+  values.forEach((value) => {
+    const item = document.createElement("span");
+    item.textContent = value.label;
+    item.className = value.value === selectedValue ? "selected" : "";
+    menu.appendChild(item);
+  });
+  return menu;
+}
+
+function showTourPresetExample() {
+  targetSizePresetEl.value = "25";
+  videoFpsPresetEl.value = "60";
+  document.getElementById("targetSizeControl").classList.remove("custom-active");
+  document.getElementById("videoFpsControl").classList.remove("custom-active");
+  document.querySelector(".target-size-field").appendChild(createTourPresetMenu([
+    { value: "1", label: "1 MB" }, { value: "5", label: "5 MB" },
+    { value: "10", label: "10 MB" }, { value: "25", label: "25 MB" },
+    { value: "50", label: "50 MB" }, { value: "100", label: "100 MB" },
+    { value: "custom", label: "Custom" },
+  ], "25"));
+  document.getElementById("videoFpsControl").closest("label").appendChild(createTourPresetMenu([
+    { value: "24", label: "24 FPS" }, { value: "25", label: "25 FPS" },
+    { value: "30", label: "30 FPS" }, { value: "50", label: "50 FPS" },
+    { value: "60", label: "60 FPS" }, { value: "120", label: "120 FPS" },
+    { value: "custom", label: "Custom" },
+  ], "60"));
+  document.body.classList.add("tour-presets-open");
+}
+
+function hideTourPresetExample() {
+  document.querySelectorAll(".tour-preset-menu").forEach((menu) => menu.remove());
+  document.body.classList.remove("tour-presets-open");
+  if (!tourSession || !tourSession.presetPresentation) return;
+  const saved = tourSession.presetPresentation;
+  targetSizePresetEl.value = saved.targetValue;
+  videoFpsPresetEl.value = saved.fpsValue;
+  document.getElementById("targetSizeControl").classList.toggle("custom-active", saved.targetCustom);
+  document.getElementById("videoFpsControl").classList.toggle("custom-active", saved.fpsCustom);
+}
+
+function showTourResultsExample() {
+  document.getElementById("smartResultsSubtitle").textContent = "1 of 1 example files completed successfully.";
+  document.getElementById("smartResultsStatus").textContent = "Example";
+  document.getElementById("smartResultsReduction").textContent = "71.3% smaller";
+  document.getElementById("smartResultsBefore").textContent = "148.2 MB";
+  document.getElementById("smartResultsAfter").textContent = "42.6 MB";
+  document.getElementById("smartResultsSaved").textContent = "105.6 MB saved";
+  document.getElementById("smartResultsAfterBar").style.width = "28.7%";
+  document.getElementById("smartQualityRing").style.setProperty("--quality-angle", "352.08deg");
+  document.getElementById("smartQualityRing").classList.remove("unavailable");
+  document.getElementById("smartResultsSimilarity").textContent = "97.8%";
+  document.getElementById("smartResultsDifference").textContent = "2.2% measured difference across 1 visual file.";
+  document.getElementById("smartResultsProcessed").textContent = "1/1";
+  document.getElementById("smartResultsElapsed").textContent = "0:26";
+  document.getElementById("smartResultsFailed").textContent = "0";
+  document.getElementById("smartResultsCancelled").textContent = "0";
+  smartResultsListEl.replaceChildren(createTourDashboardRow());
+  document.getElementById("smartResultsReveal").disabled = true;
+  smartResultsViewEl.classList.add("visible");
+  smartResultsViewEl.setAttribute("aria-hidden", "false");
+  setFullWindowViewState("smart-results-open", true);
+}
+
+function resetTourPresentation() {
+  hideTourPresetExample();
+  hideTourDetailExample();
+  closeSmartResultsView();
+  if (tourSession && tourSession.fileListNodes)
+    fileListEl.replaceChildren(...tourSession.fileListNodes);
+  if (tourSession)
+    document.body.classList.toggle("smart-has-files", tourSession.smartHasFiles);
+}
+
+function enterTourStep(step) {
+  resetTourPresentation();
+  if (step.page === "standard") {
+    setCompressionMode("standard", false);
+    if (step.presetDemo) showTourPresetExample();
+  } else if (step.page === "details") {
+    setCompressionMode("standard", false);
+    showTourDetailExample();
+  } else if (step.page === "smart" || step.page === "processing" || step.page === "results") {
+    setCompressionMode("smart", false);
+    if (step.page === "processing") renderTourProcessingExample();
+    if (step.page === "results") showTourResultsExample();
+  }
+}
+
+function positionTourStep() {
+  if (!tourActive) return;
+  const step = TOUR_STEPS[tourStepIndex];
+  const target = step.target ? document.querySelector(step.target) : null;
+  const usableTarget = target && target.getClientRects().length ? target : null;
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const minTop = document.body.classList.contains("has-custom-titlebar") ? 44 : 16;
+  tourOverlayEl.classList.toggle("centered", !usableTarget);
+
+  if (!usableTarget) {
+    const popoverRect = tourPopoverEl.getBoundingClientRect();
+    tourPopoverEl.style.left = `${Math.max(16, (viewportWidth - popoverRect.width) / 2)}px`;
+    tourPopoverEl.style.top = `${Math.max(minTop, (viewportHeight - popoverRect.height) / 2)}px`;
+    return;
+  }
+
+  const rect = usableTarget.getBoundingClientRect();
+  const configuredPadding = step.spotlightPadding ?? 8;
+  const padding = typeof configuredPadding === "number"
+    ? { top: configuredPadding, right: configuredPadding, bottom: configuredPadding, left: configuredPadding }
+    : { top: 8, right: 8, bottom: 8, left: 8, ...configuredPadding };
+  const spotlightLeft = Math.max(4, rect.left - padding.left);
+  const spotlightTop = Math.max(minTop, rect.top - padding.top);
+  const spotlightRight = Math.min(viewportWidth - 4, rect.right + padding.right);
+  const spotlightBottom = Math.min(viewportHeight - 4, rect.bottom + padding.bottom);
+  tourSpotlightEl.style.left = `${spotlightLeft}px`;
+  tourSpotlightEl.style.top = `${spotlightTop}px`;
+  tourSpotlightEl.style.width = `${Math.max(0, spotlightRight - spotlightLeft)}px`;
+  tourSpotlightEl.style.height = `${Math.max(0, spotlightBottom - spotlightTop)}px`;
+
+  const popoverRect = tourPopoverEl.getBoundingClientRect();
+  const gap = 16;
+  const candidates = {
+    center: { left: (viewportWidth - popoverRect.width) / 2, top: (viewportHeight - popoverRect.height) / 2 },
+    "bottom-right": { left: viewportWidth - popoverRect.width - 28, top: viewportHeight - popoverRect.height - 28 },
+    bottom: { left: rect.left + (rect.width - popoverRect.width) / 2, top: rect.bottom + gap },
+    top: { left: rect.left + (rect.width - popoverRect.width) / 2, top: rect.top - popoverRect.height - gap },
+    right: { left: rect.right + gap, top: rect.top + (rect.height - popoverRect.height) / 2 },
+    left: { left: rect.left - popoverRect.width - gap, top: rect.top + (rect.height - popoverRect.height) / 2 },
+  };
+  const order = [step.placement, "bottom", "top", "right", "left"].filter(
+    (value, index, values) => value && values.indexOf(value) === index
+  );
+  let chosen = candidates[order[0]] || candidates.bottom;
+  for (const placement of order) {
+    const candidate = candidates[placement];
+    if (
+      candidate.left >= 16 &&
+      candidate.left + popoverRect.width <= viewportWidth - 16 &&
+      candidate.top >= minTop &&
+      candidate.top + popoverRect.height <= viewportHeight - 16
+    ) {
+      chosen = candidate;
+      break;
+    }
+  }
+  tourPopoverEl.style.left = `${Math.max(16, Math.min(viewportWidth - popoverRect.width - 16, chosen.left))}px`;
+  tourPopoverEl.style.top = `${Math.max(minTop, Math.min(viewportHeight - popoverRect.height - 16, chosen.top))}px`;
+}
+
+function renderTourStep() {
+  tourStepIndex = clampTourIndex(tourStepIndex, TOUR_STEPS.length);
+  const step = TOUR_STEPS[tourStepIndex];
+  enterTourStep(step);
+  document.getElementById("tourStepLabel").textContent = step.label;
+  document.getElementById("tourTitle").textContent = step.title;
+  document.getElementById("tourBody").textContent = step.body;
+  const example = document.getElementById("tourExample");
+  example.hidden = !step.example;
+  example.textContent = step.example || "";
+  document.getElementById("tourProgressText").textContent = `${tourStepIndex + 1} of ${TOUR_STEPS.length}`;
+  document.getElementById("tourBack").disabled = tourStepIndex === 0;
+  document.getElementById("tourNext").textContent =
+    tourStepIndex === TOUR_STEPS.length - 1 ? "Finish tour" : "Next";
+  const dots = document.getElementById("tourDots");
+  dots.replaceChildren();
+  TOUR_STEP_IDS.forEach((id, index) => {
+    const dot = document.createElement("span");
+    dot.className = `tour-dot${index === tourStepIndex ? " active" : index < tourStepIndex ? " complete" : ""}`;
+    dot.title = id.replace(/-/g, " ");
+    dots.appendChild(dot);
+  });
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const target = step.target ? document.querySelector(step.target) : null;
+    if (target) target.scrollIntoView({ block: "center", inline: "nearest" });
+    positionTourStep();
+    tourPopoverEl.focus({ preventScroll: true });
+  }));
+}
+
+function startVersionTour(replay = false) {
+  if (
+    tourActive ||
+    document.body.classList.contains("processing") ||
+    detailViewEl.classList.contains("visible") ||
+    smartResultsViewEl.classList.contains("visible")
+  ) return false;
+  if (!replay && (tourSeenThisSession || hasSeenTour(localStorage))) return false;
+  const activeElement = document.activeElement;
+  const scrollHost = getTourScrollHost();
+  const aboutWasVisible = document.getElementById("aboutModal").classList.contains("visible");
+  tourSession = {
+    snapshot: createTourSnapshot({
+      mode: compressionMode,
+      statusText: statusEl.textContent,
+      scrollTop: scrollHost ? scrollHost.scrollTop : 0,
+      resultsVisible: smartResultsViewEl.classList.contains("visible"),
+      detailVisible: detailViewEl.classList.contains("visible"),
+      focusedId: aboutWasVisible ? "aboutBtn" : activeElement && activeElement.id,
+    }),
+    detailPath: detailedFilePath,
+    batchSummary: smartBatchSummary,
+    fileListNodes: [...fileListEl.childNodes],
+    smartHasFiles: document.body.classList.contains("smart-has-files"),
+    presetPresentation: {
+      targetValue: targetSizePresetEl.value,
+      fpsValue: videoFpsPresetEl.value,
+      targetCustom: document.getElementById("targetSizeControl").classList.contains("custom-active"),
+      fpsCustom: document.getElementById("videoFpsControl").classList.contains("custom-active"),
+    },
+    inertStates: [
+      ...document.querySelectorAll(
+        ".topbar, .container, .modal-overlay, .detail-view, .smart-results-view"
+      ),
+    ].map((element) => ({ element, inert: !!element.inert })),
+  };
+  tourSession.inertStates.forEach(({ element }) => { element.inert = true; });
+  document.getElementById("aboutModal").classList.remove("visible");
+  tourActive = true;
+  tourStepIndex = 0;
+  document.body.classList.add("tour-active");
+  tourOverlayEl.classList.add("visible");
+  tourOverlayEl.setAttribute("aria-hidden", "false");
+  renderTourStep();
+  return true;
+}
+
+function finishVersionTour() {
+  if (!tourActive || !tourSession) return;
+  const session = tourSession;
+  markTourSeen(localStorage);
+  tourSeenThisSession = true;
+  resetTourPresentation();
+  setCompressionMode(session.snapshot.mode, false);
+  document.body.classList.toggle("smart-has-files", session.smartHasFiles);
+  statusEl.textContent = session.snapshot.statusText || "Ready";
+  tourOverlayEl.classList.remove("visible", "centered");
+  tourOverlayEl.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("tour-active");
+  session.inertStates.forEach(({ element, inert }) => { element.inert = inert; });
+  tourActive = false;
+  tourSession = null;
+  smartBatchSummary = session.batchSummary;
+  if (session.snapshot.resultsVisible && smartBatchSummary)
+    showSmartResults(smartBatchSummary);
+  if (session.snapshot.detailVisible && session.detailPath)
+    openDetailedView(session.detailPath);
+  requestAnimationFrame(() => {
+    const scrollHost = getTourScrollHost();
+    if (scrollHost) scrollHost.scrollTop = session.snapshot.scrollTop;
+    const focusTarget = session.snapshot.focusedId
+      ? document.getElementById(session.snapshot.focusedId)
+      : null;
+    if (focusTarget && typeof focusTarget.focus === "function") focusTarget.focus();
+  });
+}
+
+function changeTourStep(delta) {
+  if (!tourActive) return;
+  const next = tourStepIndex + delta;
+  if (next >= TOUR_STEPS.length) return finishVersionTour();
+  tourStepIndex = clampTourIndex(next, TOUR_STEPS.length);
+  renderTourStep();
+}
+
+function maybeLaunchAutomaticTour() {
+  clearTimeout(tourLaunchTimer);
+  if (
+    tourActive ||
+    tourSeenThisSession ||
+    hasSeenTour(localStorage) ||
+    !updateStartupCheckSettled ||
+    !mediaStartupCheckSettled
+  ) return;
+  tourLaunchTimer = setTimeout(() => {
+    const blockingModal = document.querySelector(".modal-overlay.visible");
+    if (blockingModal || document.body.classList.contains("processing")) {
+      tourLaunchTimer = setTimeout(maybeLaunchAutomaticTour, 500);
+      return;
+    }
+    startVersionTour(false);
+  }, 500);
+}
+
+document.getElementById("tourNext").addEventListener("click", () => changeTourStep(1));
+document.getElementById("tourBack").addEventListener("click", () => changeTourStep(-1));
+document.getElementById("tourSkip").addEventListener("click", finishVersionTour);
+document.getElementById("tourReplayBtn").addEventListener("click", () => {
+  if (!startVersionTour(true))
+    alert("Close the active view or finish the current compression before starting the tour.");
+});
+window.addEventListener("resize", positionTourStep);
+window.addEventListener("scroll", positionTourStep, true);
+window.addEventListener("keydown", (event) => {
+  if (!tourActive) return;
+  if (event.key === "Escape") {
+    event.preventDefault();
+    finishVersionTour();
+  } else if (event.key === "ArrowRight") {
+    event.preventDefault();
+    changeTourStep(1);
+  } else if (event.key === "ArrowLeft") {
+    event.preventDefault();
+    changeTourStep(-1);
+  } else if (event.key === "Tab") {
+    const focusable = [...tourPopoverEl.querySelectorAll("button:not(:disabled)")];
+    if (!focusable.length) return;
+    const current = focusable.indexOf(document.activeElement);
+    let next = event.shiftKey ? current - 1 : current + 1;
+    if (next < 0) next = focusable.length - 1;
+    if (next >= focusable.length) next = 0;
+    event.preventDefault();
+    focusable[next].focus();
+  }
 });
 
 function renderList() {
@@ -2228,7 +2796,7 @@ function renderList() {
           try {
             const fs = require("fs");
             const st = fs.statSync(p);
-            const cacheName = `thumb_${st.mtimeMs}_${
+            const cacheName = `compressly_thumb_${st.mtimeMs}_${
               st.size
             }_${require("path").basename(p)}.png`;
             const tmp = require("os").tmpdir();
@@ -3061,10 +3629,11 @@ async function compressImage(p, buffer, ft, targetMB, onProgress) {
   let quality = 90; // starting quality for lossy formats
 
   const targetBytes = Math.max(1024 * 10, Math.round(targetMB * 1024 * 1024));
+  const maxPasses = 16;
 
   // try multiple passes: reduce quality and/or width until under target or until limits
-  for (let pass = 0; pass < 10; pass++) {
-    fileStates[p].processingDetails.stage = `Pass ${pass + 1} of 10`;
+  for (let pass = 0; pass < maxPasses; pass++) {
+    fileStates[p].processingDetails.stage = `Pass ${pass + 1} of ${maxPasses}`;
     let pipeline = img.clone();
     // reduce width progressively after first few passes
     if (width && pass > 0)
@@ -3083,12 +3652,12 @@ async function compressImage(p, buffer, ft, targetMB, onProgress) {
         .toBuffer();
     } else if (outputExt === ".webp") {
       data = await pipeline
-        .webp({ quality: Math.max(20, Math.round(quality)) })
+        .webp({ quality: Math.max(10, Math.round(quality)) })
         .toBuffer();
     } else {
       data = await pipeline
         .jpeg({
-          quality: Math.max(20, Math.round(quality)),
+          quality: Math.max(10, Math.round(quality)),
           progressive: true,
           mozjpeg: true,
         })
@@ -3097,7 +3666,10 @@ async function compressImage(p, buffer, ft, targetMB, onProgress) {
 
     // progress callback (estimate)
     if (onProgress) {
-      const pct = Math.min(90, Math.round(((pass + 1) / 10) * 90));
+      const pct = Math.min(
+        90,
+        Math.round(((pass + 1) / maxPasses) * 90)
+      );
       try {
         onProgress(pct, "processing");
       } catch (e) {}
@@ -3115,7 +3687,7 @@ async function compressImage(p, buffer, ft, targetMB, onProgress) {
       }
     } catch (e) {}
 
-    if (data.length <= targetBytes || pass === 9) {
+    if (data.length <= targetBytes || pass === maxPasses - 1) {
       // ensure outPath is visible to UI before/while writing
       if (!fileStates[p]) fileStates[p] = {};
       fileStates[p].outPath = outPath;
@@ -3144,8 +3716,8 @@ async function compressImage(p, buffer, ft, targetMB, onProgress) {
     }
 
     // shrink further for next pass
-    width = width ? Math.round(width * 0.9) : null;
-    quality = Math.max(20, Math.round(quality * 0.85));
+    width = width ? Math.max(32, Math.round(width * 0.85)) : null;
+    quality = Math.max(10, Math.round(quality * 0.82));
   }
 
   // fallback (shouldn't reach here) - write original buffer
@@ -3484,6 +4056,10 @@ async function compressAudio(p, targetMB, onProgress, opts = {}) {
 
   const path = require("path");
   const fs = require("fs");
+  const attempt = Number.isInteger(opts._attempt) ? opts._attempt : 0;
+  const maxAttempts = 4;
+  const bitrateScale =
+    typeof opts._bitrateScale === "number" ? opts._bitrateScale : 1;
 
   // decide codec & output extension. For FLAC inputs we convert to lossy Opus
   // to achieve meaningful size reduction (FLAC is lossless so re-encoding to
@@ -3562,13 +4138,13 @@ async function compressAudio(p, targetMB, onProgress, opts = {}) {
   const codecMaxKbps = codec === "libopus" ? 256 : 320;
   const audioBitrateKbps = Math.max(
     16,
-    Math.min(codecMaxKbps, Math.round(totalTargetKbps))
+    Math.min(codecMaxKbps, Math.round(totalTargetKbps * bitrateScale))
   );
   fileStates[p].processingDetails = {
     ...(fileStates[p].processingDetails || {}),
     outputFormat: finalExt.replace(/^\./, "").toUpperCase(),
     audioBitrateKbps,
-    stage: "Encoding audio",
+    stage: `Attempt ${attempt + 1} of ${maxAttempts}`,
   };
 
   return new Promise((resolve, reject) => {
@@ -3666,15 +4242,42 @@ async function compressAudio(p, targetMB, onProgress, opts = {}) {
           if (onProgress) onProgress(0, "cancelled");
           return resolve(null);
         }
-        if (!fileStates[p]) fileStates[p] = {};
-        fileStates[p].lastOut = outPath;
         let actualBytes;
         try {
           actualBytes = fs.statSync(outPath).size;
         } catch (e) {
           return reject(new Error(`Could not verify audio output size: ${e.message}`));
         }
-        const { isWithinTarget, formatSizeWarning } = require("./media-utils");
+        const {
+          isWithinTarget,
+          calculateRetryScale,
+          formatSizeWarning,
+        } = require("./media-utils");
+        if (
+          !isWithinTarget(actualBytes, targetBytes) &&
+          attempt + 1 < maxAttempts &&
+          audioBitrateKbps > 16
+        ) {
+          const correction = calculateRetryScale(actualBytes, targetBytes);
+          try {
+            fs.unlinkSync(outPath);
+          } catch (e) {}
+          if (fileStates[p]) {
+            fileStates[p].outPath = null;
+            fileStates[p].displayedProgress = 0;
+            fileStates[p].processingDetails.stage =
+              `Retrying audio after attempt ${attempt + 1}`;
+          }
+          if (onProgress) onProgress(0, "processing");
+          compressAudio(p, targetMB, onProgress, {
+            ...opts,
+            _attempt: attempt + 1,
+            _bitrateScale: bitrateScale * correction,
+          }).then(resolve, reject);
+          return;
+        }
+        if (!fileStates[p]) fileStates[p] = {};
+        fileStates[p].lastOut = outPath;
         const reachedTarget = isWithinTarget(actualBytes, targetBytes);
         fileStates[p].sizeWarning = reachedTarget
           ? null
@@ -3729,7 +4332,7 @@ async function generateVideoThumbnail(videoPath, opts = {}) {
     const tmpdir = os.tmpdir();
     const outFile = path.join(
       tmpdir,
-      "thumb_" + Math.random().toString(36).slice(2, 9) + ".png"
+      "compressly_thumb_" + Math.random().toString(36).slice(2, 9) + ".png"
     );
 
     const getMetadata = (src) =>
@@ -4137,4 +4740,7 @@ function checkMediaBinary(binaryPath, versionPattern) {
   } catch (e) {
     // ignore any detection errors
   }
-})();
+})().finally(() => {
+  mediaStartupCheckSettled = true;
+  maybeLaunchAutomaticTour();
+});

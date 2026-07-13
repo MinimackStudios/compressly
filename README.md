@@ -1,6 +1,6 @@
 # Compressly
 
-**Compressly** is a desktop app built with Electron that compresses images and videos to a target file size. It’s designed to be simple, fast, and useful, especially for people who need lightweight media without sacrificing quality. **Requires Windows 10 and macOS High Sierra or higher.**
+**Compressly** is a desktop app built with Electron that compresses images, videos, and audio locally. Use exact target-size controls when a file must fit a limit, or Smart Compression when you want a smaller file while retaining strong visual fidelity. **Requires Windows 10 or later, or macOS 12 Monterey or later.**
 
 There are many tools for compressing videos, but few that also support
 images & audio, fewer still that work entirely offline, and even fewer
@@ -28,6 +28,10 @@ To compile a production build:
 1. Run the build script  
    `npm run build`
 2. Your packaged app will be ready in the `dist` folder
+
+## Version 2.0
+
+Version 2.0 adds Smart Compression, target-size and FPS presets, a full per-file Detailed View, sampled SSIM analysis for visual media, a Smart Compression completion dashboard, and a guided welcome tour. Saved preferences and generated thumbnail cache data can be cleared from **About → Reset Compressly data** without deleting source files or compressed outputs.
 
 ### macOS arm64 note
 
