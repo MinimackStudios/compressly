@@ -1,6 +1,6 @@
 {
   "name": "compressly",
-  "version": "2.0.0-prelease.4",
+  "version": "2.0.0",
   "description": "Electron app to compress videos, images & audio",
   "main": "src/main.js",
   "scripts": {
