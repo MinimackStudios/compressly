@@ -189,7 +189,7 @@ try {
         return;
       }
       // show the control on Windows
-      wrap.style.display = "inline-flex";
+      wrap.style.display = "flex";
       // request current persisted value from main
       try {
         const useCustom = await (window.electronAPI &&
